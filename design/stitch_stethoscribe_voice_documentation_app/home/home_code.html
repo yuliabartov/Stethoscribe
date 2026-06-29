@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Stethoscribe - Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+        }
+        .active-nav-pill {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .active-nav-pill:active {
+            transform: scale(0.9);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-dim": "#d8dadc",
+                        "on-secondary-container": "#6f5100",
+                        "on-secondary-fixed": "#261a00",
+                        "surface-variant": "#e0e3e5",
+                        "on-tertiary-fixed": "#2a1700",
+                        "on-primary-fixed-variant": "#005049",
+                        "inverse-primary": "#6bd8cb",
+                        "secondary": "#795900",
+                        "surface-container-high": "#e6e8ea",
+                        "tertiary-container": "#a36700",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary-fixed": "#00201d",
+                        "secondary-fixed": "#ffdf9f",
+                        "outline-variant": "#bcc9c6",
+                        "on-tertiary-container": "#fffbff",
+                        "on-background": "#191c1e",
+                        "on-error-container": "#93000a",
+                        "on-surface-variant": "#3d4947",
+                        "tertiary": "#825100",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed": "#89f5e7",
+                        "outline": "#6d7a77",
+                        "tertiary-fixed": "#ffddb8",
+                        "background": "#f7f9fb",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "on-secondary": "#ffffff",
+                        "secondary-container": "#ffc329",
+                        "surface-container-lowest": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "primary": "#00685f",
+                        "surface-tint": "#006a61",
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "on-secondary-fixed-variant": "#5c4300",
+                        "on-surface": "#191c1e",
+                        "on-primary-container": "#f4fffc",
+                        "surface-container": "#eceef0",
+                        "secondary-fixed-dim": "#f9bd22",
+                        "primary-container": "#008378",
+                        "surface": "#f7f9fb",
+                        "primary-fixed-dim": "#6bd8cb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "2xl": "24px",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "touch-target": "56px",
+                        "card-padding": "24px",
+                        "margin-mobile": "20px",
+                        "margin-desktop": "64px",
+                        "base": "8px"
+                    },
+                    "fontFamily": {
+                        "display": ["Hanken Grotesk"],
+                        "label-caps": ["JetBrains Mono"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-md": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-sm": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "display": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "600" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md selection:bg-primary-fixed-dim">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 right-0 z-40 bg-surface flex justify-between items-center w-full px-margin-mobile h-touch-target">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-headline-sm" data-icon="stethoscope">stethoscope</span>
+<h1 class="text-headline-sm-mobile font-headline-sm font-bold text-primary">Stethoscribe</h1>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-variant overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A close-up portrait of a professional female doctor with a warm smile, wearing a white clinical coat and a stethoscope around her neck. The lighting is bright and natural, reflecting a modern healthcare environment with a soft teal and warm amber color palette. The image is crisp and professional, fitting the 'Calm Expert' brand identity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDoSqFRghc89t0lAWRnK7dO-IAv7wdhfhIoMKjstf8fhgRmxa0cmdzOKd2AjTs8yd2-bQ9iPgmwXLVeckk0jKsiRSD74QM8QOYDqQj6bUWVsaQZMQtA3EnIao5prTGsLmO2wp2Mil96A-UTUk2Y6TA83dmirhiuxu7tqRd29Q3JN93SmRko3SsMqxkCHjPSCha9hilnDBeaRqR61vFmFMMOSn0uMCr-in3cdpe8EotSi6WVJmWhjeILQvi1Ux7pEmkGXknzSVhAGik"/>
+</div>
+</header>
+<main class="pt-20 pb-32 px-margin-mobile max-w-screen-md mx-auto">
+<!-- Greeting Section -->
+<section class="mb-8">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Good Morning, Dr. Smith</h2>
+<p class="text-body-md text-on-surface-variant mt-1">Ready to transcribe your first patient of the day?</p>
+</section>
+<!-- Primary CTA: Start Exam -->
+<button class="w-full bg-secondary-container text-on-secondary-container h-[140px] rounded-2xl flex flex-col items-center justify-center gap-2 mb-10 transition-all active:scale-95 border border-outline-variant group">
+<div class="w-16 h-16 rounded-full bg-on-secondary-container/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[40px]" data-icon="pulse">pause</span>
+</div>
+<span class="text-headline-sm font-headline-sm">Start exam</span>
+</button>
+<!-- Templates Section -->
+<section class="mb-10">
+<div class="flex justify-between items-end mb-4">
+<h3 class="text-headline-sm font-headline-sm">Your Templates</h3>
+<span class="text-label-caps font-label-caps text-primary cursor-pointer">View all</span>
+</div>
+<div class="flex gap-4 overflow-x-auto pb-4 no-scrollbar -mx-margin-mobile px-margin-mobile">
+<!-- Template Card 1 -->
+<div class="flex-shrink-0 w-[200px] bg-primary-container/10 border border-primary/20 rounded-2xl p-card-padding flex flex-col justify-between h-[180px] hover:bg-primary-container/20 transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-primary" data-icon="medical_information">medical_information</span>
+<div>
+<h4 class="font-headline-sm text-body-md text-on-primary-fixed-variant leading-tight">General Physical</h4>
+<p class="text-label-caps font-label-caps text-on-surface-variant mt-2">12 Fields</p>
+</div>
+</div>
+<!-- Template Card 2 -->
+<div class="flex-shrink-0 w-[200px] bg-primary-container/10 border border-primary/20 rounded-2xl p-card-padding flex flex-col justify-between h-[180px] hover:bg-primary-container/20 transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-primary" data-icon="description">description</span>
+<div>
+<h4 class="font-headline-sm text-body-md text-on-primary-fixed-variant leading-tight">SOAP Note</h4>
+<p class="text-label-caps font-label-caps text-on-surface-variant mt-2">4 Fields</p>
+</div>
+</div>
+<!-- Template Card 3 -->
+<div class="flex-shrink-0 w-[200px] bg-primary-container/10 border border-primary/20 rounded-2xl p-card-padding flex flex-col justify-between h-[180px] hover:bg-primary-container/20 transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-primary" data-icon="child_care">child_care</span>
+<div>
+<h4 class="font-headline-sm text-body-md text-on-primary-fixed-variant leading-tight">Pediatric Checkup</h4>
+<p class="text-label-caps font-label-caps text-on-surface-variant mt-2">15 Fields</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Recent Reports -->
+<section>
+<h3 class="text-headline-sm font-headline-sm mb-4">Recent reports</h3>
+<div class="space-y-3">
+<!-- Report Item 1 -->
+<div class="bg-surface-container-low border border-outline-variant p-4 rounded-xl flex items-center justify-between hover:bg-surface-container transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="article">article</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">SOAP Note</h4>
+<p class="text-label-caps font-label-caps text-on-surface-variant">Feb 24, 10:15 AM</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="chevron_right">chevron_right</span>
+</div>
+<!-- Report Item 2 -->
+<div class="bg-surface-container-low border border-outline-variant p-4 rounded-xl flex items-center justify-between hover:bg-surface-container transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="personal_injury">personal_injury</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">General Physical</h4>
+<p class="text-label-caps font-label-caps text-on-surface-variant">Feb 23, 03:45 PM</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="chevron_right">chevron_right</span>
+</div>
+<!-- Report Item 3 -->
+<div class="bg-surface-container-low border border-outline-variant p-4 rounded-xl flex items-center justify-between hover:bg-surface-container transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="stethoscope">stethoscope</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">Pediatric Checkup</h4>
+<p class="text-label-caps font-label-caps text-on-surface-variant">Feb 23, 11:20 AM</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface-container-lowest dark:bg-surface-container-high border-t border-outline-variant rounded-t-xl shadow-lg">
+<!-- Home (Active) -->
+<a class="active-nav-pill flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-6 py-2" href="#">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="text-label-caps font-label-caps">Home</span>
+</a>
+<!-- Records -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+<span class="text-label-caps font-label-caps">Records</span>
+</a>
+<!-- Settings -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-label-caps font-label-caps">Settings</span>
+</a>
+</nav>
+<script>
+        // Micro-interactions for scrolling effects
+        window.addEventListener('scroll', () => {
+            const header = document.querySelector('header');
+            if (window.scrollY > 20) {
+                header.classList.add('shadow-md');
+                header.classList.replace('bg-surface', 'bg-white/80');
+                header.classList.add('backdrop-blur-md');
+            } else {
+                header.classList.remove('shadow-md');
+                header.classList.replace('bg-white/80', 'bg-surface');
+                header.classList.remove('backdrop-blur-md');
+            }
+        });
+
+        // Add active scale effect to cards
+        document.querySelectorAll('.rounded-2xl, .rounded-xl').forEach(card => {
+            card.addEventListener('mousedown', () => {
+                card.style.transform = 'scale(0.98)';
+            });
+            card.addEventListener('mouseup', () => {
+                card.style.transform = 'scale(1)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'scale(1)';
+            });
+        });
+    </script>
+</body></html>

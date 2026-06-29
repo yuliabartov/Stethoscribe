@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Stethoscribe - Template Builder</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#d8dadc",
+                    "on-secondary-container": "#6f5100",
+                    "on-secondary-fixed": "#261a00",
+                    "surface-variant": "#e0e3e5",
+                    "on-tertiary-fixed": "#2a1700",
+                    "on-primary-fixed-variant": "#005049",
+                    "inverse-primary": "#6bd8cb",
+                    "secondary": "#795900",
+                    "surface-container-high": "#e6e8ea",
+                    "tertiary-container": "#a36700",
+                    "inverse-on-surface": "#eff1f3",
+                    "surface-bright": "#f7f9fb",
+                    "on-primary-fixed": "#00201d",
+                    "secondary-fixed": "#ffdf9f",
+                    "outline-variant": "#bcc9c6",
+                    "on-tertiary-container": "#fffbff",
+                    "on-background": "#191c1e",
+                    "on-error-container": "#93000a",
+                    "on-surface-variant": "#3d4947",
+                    "tertiary": "#825100",
+                    "surface-container-low": "#f2f4f6",
+                    "surface-container-highest": "#e0e3e5",
+                    "on-tertiary": "#ffffff",
+                    "primary-fixed": "#89f5e7",
+                    "outline": "#6d7a77",
+                    "tertiary-fixed": "#ffddb8",
+                    "background": "#f7f9fb",
+                    "tertiary-fixed-dim": "#ffb95f",
+                    "on-secondary": "#ffffff",
+                    "secondary-container": "#ffc329",
+                    "surface-container-lowest": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "inverse-surface": "#2d3133",
+                    "on-error": "#ffffff",
+                    "on-primary": "#ffffff",
+                    "primary": "#00685f",
+                    "surface-tint": "#006a61",
+                    "error": "#ba1a1a",
+                    "on-tertiary-fixed-variant": "#653e00",
+                    "on-secondary-fixed-variant": "#5c4300",
+                    "on-surface": "#191c1e",
+                    "on-primary-container": "#f4fffc",
+                    "surface-container": "#eceef0",
+                    "secondary-fixed-dim": "#f9bd22",
+                    "primary-container": "#008378",
+                    "surface": "#f7f9fb",
+                    "primary-fixed-dim": "#6bd8cb"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "16px",
+                    "touch-target": "56px",
+                    "card-padding": "24px",
+                    "margin-mobile": "20px",
+                    "margin-desktop": "64px",
+                    "base": "8px"
+            },
+            "fontFamily": {
+                    "display": ["Hanken Grotesk"],
+                    "label-caps": ["JetBrains Mono"],
+                    "body-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-md": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"],
+                    "headline-sm": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .drag-ghost {
+            opacity: 0.5;
+            background-color: #f2f4f6;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #bcc9c6;
+            border-radius: 10px;
+        }
+        .template-card {
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .template-card:active {
+            transform: scale(0.98);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- Top Navigation Bar -->
+<header class="bg-surface docked full-width top-0 z-50 flex justify-between items-center w-full px-margin-mobile h-touch-target">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-[32px]" data-icon="stethoscope">stethoscope</span>
+<h1 class="text-headline-sm-mobile font-headline-sm font-bold text-primary">Stethoscribe</h1>
+</div>
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-variant transition-all duration-150 active:scale-95">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications">notifications</span>
+</button>
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center overflow-hidden border-2 border-primary-fixed">
+<img class="w-full h-full object-cover" data-alt="A professional close-up portrait of a doctor in a modern medical setting, wearing a clean white lab coat and a stethoscope around their neck. The lighting is warm and bright, conveying a sense of expertise and approachability. The background shows a soft-focus clinical environment with Sunlit Sage tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBUKXlaaBt0Gi1ZeWMgsoopZcwXMCpNnVk2lHIVam6iyJWyCpxq2qBRaN-9C7tCZEphkjdZ3vadb91BM6uYC4EyWYlZGfrBIU5uEivJhYyUEDl6Y_frMrAXo-jYnOkLnTjjhpAUo2-X9Umn8Tf74KoJVml5YkGY2sXt-7kMSpckBUkbJMoN9Bc3LDj-jLcyZivzqyeYG7V-aymmXqQ-doYIsBA0KCaZKkjjfJD7V5-p5sGbygAEHr-UN1jH4-SiAHKfyGL5zTZHrf0"/>
+</div>
+</div>
+</header>
+<main class="min-h-screen pt-4 pb-32 max-w-4xl mx-auto px-margin-mobile">
+<!-- Welcome Section -->
+<section class="mb-10">
+<div class="relative overflow-hidden rounded-[24px] bg-secondary-container p-card-padding">
+<div class="relative z-10">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-secondary-container mb-2">Build New Template</h2>
+<p class="text-body-md text-on-secondary-fixed-variant opacity-80 max-w-md">Customize your scribe workflow by adding specific clinical data points and categories.</p>
+</div>
+<!-- Abstract medical background pattern -->
+<div class="absolute -right-8 -bottom-8 opacity-10">
+<span class="material-symbols-outlined text-[160px]" data-icon="clinical_notes">clinical_notes</span>
+</div>
+</div>
+</section>
+<!-- Template Builder Canvas -->
+<div class="space-y-8">
+<!-- Template Name Input -->
+<div class="space-y-3">
+<label class="text-label-caps font-label-caps text-outline ml-1">TEMPLATE NAME</label>
+<div class="relative group">
+<input class="w-full h-touch-target bg-surface-container-low border-none rounded-xl px-6 focus:ring-2 focus:ring-primary transition-all text-body-lg font-headline-sm" placeholder="e.g. Annual Physical Examination" type="text"/>
+<div class="absolute right-4 top-1/2 -translate-y-1/2 text-outline group-focus-within:text-primary">
+<span class="material-symbols-outlined" data-icon="edit_note">edit_note</span>
+</div>
+</div>
+</div>
+<!-- Categories List -->
+<div class="space-y-4">
+<div class="flex items-center justify-between px-1">
+<h3 class="text-headline-sm font-headline-sm text-on-surface">Data Categories</h3>
+<span class="text-label-caps font-label-caps text-primary px-3 py-1 bg-primary-fixed rounded-full">4 CATEGORIES</span>
+</div>
+<div class="space-y-3" id="category-list">
+<!-- Category Item: Chief Complaint -->
+<div class="template-card flex items-center gap-4 bg-surface-container-lowest border border-outline-variant p-4 rounded-[24px] group">
+<div class="cursor-grab active:cursor-grabbing text-outline group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="drag_indicator">drag_indicator</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-headline-sm text-on-surface font-headline-sm">Chief Complaint</span>
+<span class="text-[10px] bg-surface-variant text-on-surface-variant px-2 py-0.5 rounded-full font-label-caps">FREE TEXT</span>
+</div>
+<p class="text-body-md text-on-surface-variant">Primary reason for the patient's visit</p>
+</div>
+<div class="flex gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-error-container hover:text-on-error-container text-outline transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+<!-- Category Item: Blood Pressure -->
+<div class="template-card flex items-center gap-4 bg-surface-container-lowest border border-outline-variant p-4 rounded-[24px] group">
+<div class="cursor-grab active:cursor-grabbing text-outline group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="drag_indicator">drag_indicator</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-headline-sm text-on-surface font-headline-sm">Blood Pressure</span>
+<span class="text-[10px] bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-label-caps">NUMBER</span>
+</div>
+<p class="text-body-md text-on-surface-variant">Systolic and diastolic measurements (mmHg)</p>
+</div>
+<div class="flex gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-error-container hover:text-on-error-container text-outline transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+<!-- Category Item: Symptom Check -->
+<div class="template-card flex items-center gap-4 bg-surface-container-lowest border border-outline-variant p-4 rounded-[24px] group">
+<div class="cursor-grab active:cursor-grabbing text-outline group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="drag_indicator">drag_indicator</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-headline-sm text-on-surface font-headline-sm">Symptom Check</span>
+<span class="text-[10px] bg-primary-fixed text-on-primary-fixed-variant px-2 py-0.5 rounded-full font-label-caps">LIST</span>
+</div>
+<p class="text-body-md text-on-surface-variant">Multi-select checklist of common symptoms</p>
+</div>
+<div class="flex gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-error-container hover:text-on-error-container text-outline transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+<!-- Category Item: Follow-up Status -->
+<div class="template-card flex items-center gap-4 bg-surface-container-lowest border border-outline-variant p-4 rounded-[24px] group">
+<div class="cursor-grab active:cursor-grabbing text-outline group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="drag_indicator">drag_indicator</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-headline-sm text-on-surface font-headline-sm">Review of Systems</span>
+<span class="text-[10px] bg-tertiary-fixed text-on-tertiary-fixed-variant px-2 py-0.5 rounded-full font-label-caps">FREE TEXT</span>
+</div>
+<p class="text-body-md text-on-surface-variant">Comprehensive systematic evaluation</p>
+</div>
+<div class="flex gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-error-container hover:text-on-error-container text-outline transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Add Category Button -->
+<button class="w-full h-touch-target border-2 border-dashed border-outline-variant rounded-xl flex items-center justify-center gap-2 text-on-surface-variant hover:bg-surface-container hover:border-primary hover:text-primary transition-all active:scale-[0.98]">
+<span class="material-symbols-outlined" data-icon="add_circle">add_circle</span>
+<span class="font-bold">Add category</span>
+</button>
+</div>
+<!-- Action Area -->
+<div class="pt-8 pb-12">
+<button class="w-full h-touch-target bg-primary text-on-primary rounded-full font-bold text-body-lg flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-container transition-all active:scale-95">
+<span class="material-symbols-outlined" data-icon="save">save</span>
+                    Save template
+                </button>
+<button class="w-full h-touch-target bg-transparent text-outline mt-2 font-bold hover:text-primary transition-colors">
+                    Discard Changes
+                </button>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Shell -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface-container-lowest dark:bg-surface-container-high rounded-t-xl border-t border-outline-variant">
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-surface-variant p-2 hover:text-primary transition-transform" href="#">
+<span class="material-symbols-outlined text-[28px]" data-icon="home">home</span>
+<span class="text-label-caps font-label-caps mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-secondary-container dark:bg-secondary text-on-secondary-container dark:text-on-secondary rounded-full px-6 py-2 transition-transform scale-90" href="#">
+<span class="material-symbols-outlined text-[28px]" data-icon="folder_open">folder_open</span>
+<span class="text-label-caps font-label-caps mt-1">Records</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-surface-variant p-2 hover:text-primary transition-transform" href="#">
+<span class="material-symbols-outlined text-[28px]" data-icon="settings">settings</span>
+<span class="text-label-caps font-label-caps mt-1">Settings</span>
+</a>
+</nav>
+<!-- Micro-interactions Script -->
+<script>
+        // Simple drag-sort placeholder logic (Visual only for prototype)
+        const categories = document.querySelectorAll('.template-card');
+        categories.forEach(card => {
+            card.addEventListener('mousedown', () => {
+                card.classList.add('scale-[0.99]', 'shadow-sm');
+            });
+            card.addEventListener('mouseup', () => {
+                card.classList.remove('scale-[0.99]', 'shadow-sm');
+            });
+        });
+
+        // Animation for the "Add category" button focus state
+        const addBtn = document.querySelector('button[class*="border-dashed"]');
+        addBtn.addEventListener('mouseenter', () => {
+            const icon = addBtn.querySelector('.material-symbols-outlined');
+            icon.style.transform = 'rotate(90deg)';
+            icon.style.transition = 'transform 0.3s ease';
+        });
+        addBtn.addEventListener('mouseleave', () => {
+            const icon = addBtn.querySelector('.material-symbols-outlined');
+            icon.style.transform = 'rotate(0deg)';
+        });
+    </script>
+</body></html>

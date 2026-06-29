@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Stethoscribe - Export &amp; Send</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Hanken Grotesk & JetBrains Mono -->
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Design System Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#d8dadc",
+                    "on-secondary-container": "#6f5100",
+                    "on-secondary-fixed": "#261a00",
+                    "surface-variant": "#e0e3e5",
+                    "on-tertiary-fixed": "#2a1700",
+                    "on-primary-fixed-variant": "#005049",
+                    "inverse-primary": "#6bd8cb",
+                    "secondary": "#795900",
+                    "surface-container-high": "#e6e8ea",
+                    "tertiary-container": "#a36700",
+                    "inverse-on-surface": "#eff1f3",
+                    "surface-bright": "#f7f9fb",
+                    "on-primary-fixed": "#00201d",
+                    "secondary-fixed": "#ffdf9f",
+                    "outline-variant": "#bcc9c6",
+                    "on-tertiary-container": "#fffbff",
+                    "on-background": "#191c1e",
+                    "on-error-container": "#93000a",
+                    "on-surface-variant": "#3d4947",
+                    "tertiary": "#825100",
+                    "surface-container-low": "#f2f4f6",
+                    "surface-container-highest": "#e0e3e5",
+                    "on-tertiary": "#ffffff",
+                    "primary-fixed": "#89f5e7",
+                    "outline": "#6d7a77",
+                    "tertiary-fixed": "#ffddb8",
+                    "background": "#f7f9fb",
+                    "tertiary-fixed-dim": "#ffb95f",
+                    "on-secondary": "#ffffff",
+                    "secondary-container": "#ffc329",
+                    "surface-container-lowest": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "inverse-surface": "#2d3133",
+                    "on-error": "#ffffff",
+                    "on-primary": "#ffffff",
+                    "primary": "#00685f",
+                    "surface-tint": "#006a61",
+                    "error": "#ba1a1a",
+                    "on-tertiary-fixed-variant": "#653e00",
+                    "on-secondary-fixed-variant": "#5c4300",
+                    "on-surface": "#191c1e",
+                    "on-primary-container": "#f4fffc",
+                    "surface-container": "#eceef0",
+                    "secondary-fixed-dim": "#f9bd22",
+                    "primary-container": "#008378",
+                    "surface": "#f7f9fb",
+                    "primary-fixed-dim": "#6bd8cb"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "16px",
+                    "touch-target": "56px",
+                    "card-padding": "24px",
+                    "margin-mobile": "20px",
+                    "margin-desktop": "64px",
+                    "base": "8px"
+            },
+            "fontFamily": {
+                    "display": ["Hanken Grotesk"],
+                    "label-caps": ["JetBrains Mono"],
+                    "body-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-md": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"],
+                    "headline-sm": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Hanken Grotesk', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        .active-format {
+            border: 2px solid #00685f;
+            background-color: #f2f4f6;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen pb-24">
+<!-- TopAppBar (Small Center Aligned) -->
+<header class="bg-surface sticky top-0 z-40 w-full px-margin-mobile h-touch-target flex justify-between items-center">
+<button class="w-touch-target h-touch-target flex items-center justify-center text-primary active:scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_back">arrow_back</span>
+</button>
+<h1 class="text-headline-sm-mobile font-headline-sm font-bold text-primary">Stethoscribe</h1>
+<div class="w-touch-target h-touch-target flex items-center justify-center">
+<div class="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A professional close-up portrait of a friendly doctor with a warm smile, wearing a clean white lab coat and a stethoscope around their neck. The background is a soft, out-of-focus clinical setting with warm, sunlit sage tones. The lighting is high-key and inviting, matching a modern medical application's clean aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxEk5Rz6e-pI22bmktjvBMHDXJxEI-DHjPtiYuENJOy4Bd-vyMtLvgsb3Vm1XzBWhCKg7UtjLYISudunkZEnr6ohElVgaCgzrJWHcshPzsZLRCb6BadxpTRXT4-n6TEIOXM0kp3lF-Sn-3NT4PX0DstwWyYkuM60HP_1lsh_vyroXHdBZa7ngnjuwCg6tajfA_CDDmwwVFBqKpQ5-3tlDVkgibG8dFIJrcNdSMKe6nNNWIAZTn12jGOmyuUMyk1xdttyWjJTNgakE"/>
+</div>
+</div>
+</header>
+<main class="px-margin-mobile mt-6 max-w-lg mx-auto">
+<!-- Screen Title & Description -->
+<section class="mb-8">
+<h2 class="font-headline-md text-headline-md text-on-surface mb-2">Export &amp; Send</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Review your transcript and choose your preferred format to share with the care team.</p>
+</section>
+<!-- Format Selection Section -->
+<section class="mb-8">
+<h3 class="font-label-caps text-label-caps text-outline mb-4">SELECT FORMAT</h3>
+<div class="grid grid-cols-1 gap-4">
+<!-- Word Card -->
+<button class="group flex items-center p-card-padding bg-surface-container-low border border-outline-variant rounded-[24px] text-left transition-all hover:bg-surface-container-high active:scale-[0.98]" id="format-word" onclick="selectFormat('word')">
+<div class="w-14 h-14 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 mr-4">
+<span class="material-symbols-outlined text-[32px]" data-icon="description">description</span>
+</div>
+<div class="flex-1">
+<p class="font-headline-sm text-headline-sm text-on-surface">Word Document</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Best for editing and clinical notes</p>
+</div>
+<div class="opacity-0 transition-opacity" id="check-word">
+<span class="material-symbols-outlined text-primary" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+</button>
+<!-- PDF Card -->
+<button class="group flex items-center p-card-padding bg-surface-container-low border border-outline-variant rounded-[24px] text-left transition-all hover:bg-surface-container-high active:scale-[0.98]" id="format-pdf" onclick="selectFormat('pdf')">
+<div class="w-14 h-14 rounded-xl bg-red-50 flex items-center justify-center text-red-600 mr-4">
+<span class="material-symbols-outlined text-[32px]" data-icon="picture_as_pdf">picture_as_pdf</span>
+</div>
+<div class="flex-1">
+<p class="font-headline-sm text-headline-sm text-on-surface">PDF</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Standard for secure medical archives</p>
+</div>
+<div class="opacity-0 transition-opacity" id="check-pdf">
+<span class="material-symbols-outlined text-primary" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+</button>
+</div>
+</section>
+<!-- Recipient Field -->
+<section class="mb-10">
+<h3 class="font-label-caps text-label-caps text-outline mb-4">RECIPIENT</h3>
+<div class="relative group">
+<div class="absolute inset-y-0 left-4 flex items-center pointer-events-none text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="alternate_email">alternate_email</span>
+</div>
+<input class="block w-full h-touch-target pl-12 pr-4 bg-surface-container-low border-0 rounded-xl focus:ring-2 focus:ring-primary font-body-md text-on-surface" id="recipient-email" placeholder="Enter recipient email" type="email" value="dr.smith@hospital.com"/>
+<div class="mt-2 flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<p class="text-[14px] font-medium text-primary">Primary physician on record</p>
+</div>
+</div>
+</section>
+<!-- Send Button -->
+<button class="w-full h-touch-target bg-primary text-on-primary font-bold text-body-lg rounded-full flex items-center justify-center shadow-md active:scale-95 transition-all" onclick="showConfirmation()">
+<span>Send report</span>
+<span class="material-symbols-outlined ml-2" data-icon="send">send</span>
+</button>
+</main>
+<!-- Success Confirmation Modal -->
+<div class="fixed inset-0 z-50 flex items-center justify-center px-margin-mobile bg-on-surface/40 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300" id="confirmation-modal">
+<div class="bg-surface-container-lowest w-full max-w-sm rounded-[32px] p-8 text-center shadow-2xl scale-95 transition-transform duration-300 transform" id="modal-content">
+<div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+<span class="material-symbols-outlined text-primary text-[48px]" data-icon="task_alt" style="font-variation-settings: 'FILL' 1;">task_alt</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Report Sent!</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-8">Dr. Smith will receive the encrypted clinical document shortly.</p>
+<button class="w-full h-touch-target bg-secondary-container text-on-secondary-container font-bold rounded-full transition-all active:scale-95" onclick="hideConfirmation()">
+                Back to Records
+            </button>
+</div>
+</div>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-40 flex justify-around items-center px-4 py-2 pb-safe bg-surface-container-lowest border-t border-outline-variant rounded-t-xl">
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="text-label-caps font-label-caps mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-6 py-2 scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+<span class="text-label-caps font-label-caps mt-1">Records</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-label-caps font-label-caps mt-1">Settings</span>
+</a>
+</nav>
+<script>
+        let selectedFormatId = null;
+
+        function selectFormat(type) {
+            // Reset
+            document.getElementById('format-word').classList.remove('active-format');
+            document.getElementById('format-pdf').classList.remove('active-format');
+            document.getElementById('check-word').classList.add('opacity-0');
+            document.getElementById('check-pdf').classList.add('opacity-0');
+
+            // Apply
+            const el = document.getElementById('format-' + type);
+            const check = document.getElementById('check-' + type);
+            el.classList.add('active-format');
+            check.classList.remove('opacity-0');
+            selectedFormatId = type;
+        }
+
+        // Initialize with Word selected
+        selectFormat('word');
+
+        function showConfirmation() {
+            const modal = document.getElementById('confirmation-modal');
+            const content = document.getElementById('modal-content');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+        }
+
+        function hideConfirmation() {
+            const modal = document.getElementById('confirmation-modal');
+            const content = document.getElementById('modal-content');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+    </script>
+</body></html>

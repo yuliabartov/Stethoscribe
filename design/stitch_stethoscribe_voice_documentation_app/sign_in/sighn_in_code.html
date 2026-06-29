@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Stethoscribe - Sign In</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-dim": "#d8dadc",
+                        "on-secondary-container": "#6f5100",
+                        "on-secondary-fixed": "#261a00",
+                        "surface-variant": "#e0e3e5",
+                        "on-tertiary-fixed": "#2a1700",
+                        "on-primary-fixed-variant": "#005049",
+                        "inverse-primary": "#6bd8cb",
+                        "secondary": "#795900",
+                        "surface-container-high": "#e6e8ea",
+                        "tertiary-container": "#a36700",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary-fixed": "#00201d",
+                        "secondary-fixed": "#ffdf9f",
+                        "outline-variant": "#bcc9c6",
+                        "on-tertiary-container": "#fffbff",
+                        "on-background": "#191c1e",
+                        "on-error-container": "#93000a",
+                        "on-surface-variant": "#3d4947",
+                        "tertiary": "#825100",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed": "#89f5e7",
+                        "outline": "#6d7a77",
+                        "tertiary-fixed": "#ffddb8",
+                        "background": "#f7f9fb",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "on-secondary": "#ffffff",
+                        "secondary-container": "#ffc329",
+                        "surface-container-lowest": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "primary": "#00685f",
+                        "surface-tint": "#006a61",
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "on-secondary-fixed-variant": "#5c4300",
+                        "on-surface": "#191c1e",
+                        "on-primary-container": "#f4fffc",
+                        "surface-container": "#eceef0",
+                        "secondary-fixed-dim": "#f9bd22",
+                        "primary-container": "#008378",
+                        "surface": "#f7f9fb",
+                        "primary-fixed-dim": "#6bd8cb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "touch-target": "56px",
+                        "card-padding": "24px",
+                        "margin-mobile": "20px",
+                        "margin-desktop": "64px",
+                        "base": "8px"
+                    },
+                    "fontFamily": {
+                        "display": ["Hanken Grotesk"],
+                        "label-caps": ["JetBrains Mono"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-md": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-sm": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #f7f9fb;
+            font-family: 'Hanken Grotesk', sans-serif;
+            overflow-x: hidden;
+        }
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+        .login-card {
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .login-card:hover {
+            transform: translateY(-4px);
+        }
+        .soft-pulse {
+            animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col items-center justify-center p-gutter">
+<div class="grain-overlay"></div>
+<!-- Background Decorative Elements -->
+<div class="fixed top-[-10%] right-[-10%] w-[500px] h-[500px] bg-secondary-fixed/20 rounded-full blur-[100px] -z-10"></div>
+<div class="fixed bottom-[-5%] left-[-5%] w-[400px] h-[400px] bg-primary-fixed/20 rounded-full blur-[80px] -z-10"></div>
+<main class="w-full max-w-md flex flex-col items-center text-center">
+<!-- Logo Container -->
+<div class="mb-12 relative group">
+<div class="absolute inset-0 bg-primary/5 rounded-full scale-150 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+<img alt="Stethoscribe Logo" class="w-48 md:w-64 h-auto relative z-10 transition-transform duration-500 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_ZQag3o_mIRHaB2jdzeKEZkS2-eHlYtX2yi7ELuaUD5Fog9ng0LxIdn0KVc1O_2wu7NWOscRCksKr1ERaVyroiNGG3SLPKbEeB2WeWSfiP2U5LEe8x9I8DD7BXt_7dqFGKEXX2Um6Z2VwBwO82aEHkL0HI0mpLPEV7LRHr15pjIQsUsyolYD6i-o0r7UBgSXTdQ6tOUB26YZnj4TkwOP1dQsNW8vB-3XnoNZI57pnGrsek1ToTNh3w6iFiprH1aIdWwsYXkzLGTE"/>
+</div>
+<!-- Typography Branding -->
+<div class="space-y-4 mb-16 px-4">
+<h1 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-primary tracking-tight">
+                Stethoscribe
+            </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant font-medium opacity-80">
+                You examine. It writes.
+            </p>
+</div>
+<!-- Action Section -->
+<div class="login-card w-full bg-surface-container-lowest rounded-[32px] p-8 border border-outline-variant/30 flex flex-col items-center gap-8">
+<div class="w-full space-y-6">
+<!-- Google Sign-In Button -->
+<button class="w-full flex items-center justify-center gap-4 bg-white hover:bg-surface-container-low text-on-surface font-headline-sm text-headline-sm-mobile h-touch-target rounded-full transition-all duration-200 border border-outline-variant active:scale-[0.98] group" onclick="this.classList.add('scale-95')">
+<!-- Google G Icon Simulation -->
+<svg class="w-6 h-6" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"></path>
+<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
+</svg>
+<span>Continue with Google</span>
+</button>
+<!-- Helpful micro-text -->
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest opacity-60">
+                    Trusted by 2,000+ Physicians
+                </p>
+</div>
+<div class="h-px w-full bg-gradient-to-r from-transparent via-outline-variant to-transparent"></div>
+<div class="flex flex-col gap-4 text-center">
+<p class="font-body-md text-body-md text-on-surface-variant/80">
+                    New to Stethoscribe? 
+                    <a class="text-primary font-semibold hover:underline underline-offset-4 decoration-2" href="#">Create an account</a>
+</p>
+<div class="flex gap-4 justify-center">
+<span class="w-2 h-2 rounded-full bg-primary/20"></span>
+<span class="w-2 h-2 rounded-full bg-primary/40"></span>
+<span class="w-2 h-2 rounded-full bg-primary/20"></span>
+</div>
+</div>
+</div>
+<!-- Secondary Information -->
+<footer class="mt-12 space-y-4">
+<div class="flex items-center justify-center gap-6">
+<a class="font-label-caps text-label-caps text-outline hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<span class="w-1 h-1 bg-outline-variant rounded-full"></span>
+<a class="font-label-caps text-label-caps text-outline hover:text-primary transition-colors" href="#">Terms of Service</a>
+</div>
+<p class="font-body-md text-body-md text-outline italic opacity-50 px-8">
+                Designed for healthcare professionals. HIPAA compliant transcription services.
+            </p>
+</footer>
+</main>
+<!-- Floating atmospheric element -->
+<div class="fixed bottom-12 right-12 hidden lg:flex flex-col items-center gap-3 animate-bounce">
+<div class="p-4 bg-secondary-container text-on-secondary-container rounded-full shadow-lg">
+<span class="material-symbols-outlined text-[32px]">stethoscope</span>
+</div>
+<span class="font-label-caps text-label-caps text-secondary font-bold">Secure Portal</span>
+</div>
+<script>
+        // Micro-interaction for the Google button
+        const btn = document.querySelector('button');
+        btn.addEventListener('mousedown', () => btn.style.transform = 'scale(0.96)');
+        btn.addEventListener('mouseup', () => btn.style.transform = 'scale(1)');
+        btn.addEventListener('mouseleave', () => btn.style.transform = 'scale(1)');
+
+        // Fade in effect on load
+        window.addEventListener('DOMContentLoaded', () => {
+            document.body.style.opacity = '0';
+            document.body.style.transition = 'opacity 0.8s ease-out';
+            setTimeout(() => {
+                document.body.style.opacity = '1';
+            }, 50);
+        });
+    </script>
+</body></html>
