@@ -14,6 +14,7 @@ const initialState: AppState = {
   examCats: null,
   activeIdx: -1,
   elapsed: 0,
+  paused: false,
   review: null,
   editingId: null,
   builder: null,
@@ -44,6 +45,7 @@ interface StethoscribeApi {
   fmt: (n: number) => string;
   startExam: (id: string) => void;
   endExam: () => void;
+  togglePause: () => void;
   reviewFromReport: (report: ReportItem) => void;
   setField: (id: string, val: string) => void;
   openBuilder: (id: string) => void;
@@ -52,7 +54,9 @@ interface StethoscribeApi {
   delCat: (id: string) => void;
   confirmAdd: () => void;
   saveTemplate: () => void;
+  delTemplate: (id: string) => void;
   sendReport: () => void;
+  delReport: (id: string) => void;
 }
 
 const StethoscribeCtx = createContext<StethoscribeApi | null>(null);
@@ -91,7 +95,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
 
   const advance = () => {
     setState((s) => {
-      if (!s.examCats) return s;
+      if (!s.examCats || s.paused) return s;
       const cats = s.examCats.map((c) => ({ ...c }));
       const i = s.activeIdx;
       if (i >= 0 && i < cats.length) cats[i].status = 'done';
@@ -122,10 +126,12 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     }));
     if (cats[0]) cats[0].status = 'active';
     clearTimers();
-    update({ screen: 'exam', exam: { templateName: t.name }, examCats: cats, activeIdx: 0, elapsed: 0 });
+    update({ screen: 'exam', exam: { templateName: t.name }, examCats: cats, activeIdx: 0, elapsed: 0, paused: false });
     tickRef.current = setInterval(advance, 1850);
-    clockRef.current = setInterval(() => update((s) => ({ elapsed: s.elapsed + 1 })), 1000);
+    clockRef.current = setInterval(() => setState((s) => (s.paused ? s : { ...s, elapsed: s.elapsed + 1 })), 1000);
   };
+
+  const togglePause = () => update((s) => ({ paused: !s.paused }));
 
   const endExam = () => {
     clearTimers();
@@ -261,6 +267,14 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const delTemplate = (id: string) => {
+    setState((s) => {
+      if (s.templates.length <= 1) return s;
+      const templates = s.templates.filter((t) => t.id !== id);
+      return { ...s, templates, selectedTemplateId: s.selectedTemplateId === id ? templates[0].id : s.selectedTemplateId };
+    });
+  };
+
   const sendReport = () => {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
@@ -270,6 +284,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       sent: true,
       reports: [{ id: 'r' + Date.now(), date: 'Jun 28, 2026', time: hh + ':' + mm, template: s.review!.templateName }].concat(s.reports),
     }));
+  };
+
+  const delReport = (id: string) => {
+    setState((s) => ({ ...s, reports: s.reports.filter((r) => r.id !== id) }));
   };
 
   const rtl = state.lang === 'he';
@@ -287,6 +305,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     fmt,
     startExam,
     endExam,
+    togglePause,
     reviewFromReport,
     setField,
     openBuilder,
@@ -295,7 +314,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     delCat,
     confirmAdd,
     saveTemplate,
+    delTemplate,
     sendReport,
+    delReport,
   };
 
   return <StethoscribeCtx.Provider value={api}>{children}</StethoscribeCtx.Provider>;

@@ -1,5 +1,4 @@
 import { BackButton } from '../components/BackButton';
-import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
@@ -12,18 +11,18 @@ export function ReviewScreen() {
     ? `${lowCount} שדות דורשים בדיקה מהירה — הקש לעריכה`
     : `${lowCount} fields need a quick check — tap to edit`;
   const reviewTemplateName = loc(tplByName(review.templateName), 'name');
+  const backScreen = state.nav === 'reports' ? 'reports' : 'home';
 
   return (
     <>
       <div style={{ padding: '22px 18px 14px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${color.borderCream}` }}>
-        <BackButton onClick={() => go('home', { nav: 'home' })} />
+        <BackButton onClick={() => go(backScreen, { nav: backScreen })} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: color.ink }}>{t.reviewReport}</div>
           <div style={{ fontSize: 13, fontWeight: 600, color: color.muted }}>
             {reviewTemplateName} · {t.today}
           </div>
         </div>
-        <LangToggle />
       </div>
 
       {hasLow && (

@@ -1,6 +1,5 @@
 import type { CSSProperties } from 'react';
 import { BackButton } from '../components/BackButton';
-import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
@@ -48,7 +47,6 @@ export function ExportScreen() {
       <div style={{ padding: '22px 18px 14px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${color.borderCream}` }}>
         <BackButton onClick={() => go('review')} />
         <div style={{ flex: 1, fontSize: 18, fontWeight: 800, color: color.ink }}>{t.exportTitle}</div>
-        <LangToggle />
       </div>
 
       <div className="scr" style={{ flex: 1, overflow: 'auto', padding: '22px 22px 130px' }}>

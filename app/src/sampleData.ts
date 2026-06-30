@@ -166,4 +166,8 @@ export const INITIAL_REPORTS: ReportItem[] = [
   { id: 'r4', date: 'Jun 26, 2026', time: '14:20', template: 'Dermatology' },
   { id: 'r5', date: 'Jun 25, 2026', time: '08:50', template: 'General Physical' },
   { id: 'r6', date: 'Jun 24, 2026', time: '15:33', template: 'Cardiac Exam' },
+  { id: 'r7', date: 'Jun 23, 2026', time: '10:05', template: 'Dermatology' },
+  { id: 'r8', date: 'Jun 22, 2026', time: '13:48', template: 'Pediatric Check' },
+  { id: 'r9', date: 'Jun 21, 2026', time: '09:30', template: 'General Physical' },
+  { id: 'r10', date: 'Jun 20, 2026', time: '17:12', template: 'Cardiac Exam' },
 ];

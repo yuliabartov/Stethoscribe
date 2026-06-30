@@ -1,5 +1,4 @@
 import { BackButton } from '../components/BackButton';
-import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 import type { BuilderCategory, CategoryType } from '../types';
@@ -26,7 +25,6 @@ export function BuilderScreen() {
       <div style={{ padding: '22px 18px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${color.borderCream}` }}>
         <BackButton onClick={() => go('templates', { nav: 'templates' })} />
         <div style={{ flex: 1, fontSize: 18, fontWeight: 800, color: color.ink }}>{t.templateBuilder}</div>
-        <LangToggle />
       </div>
 
       <div className="scr" style={{ flex: 1, overflow: 'auto', padding: '20px 22px 130px' }}>

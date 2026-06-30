@@ -1,11 +1,10 @@
 import type { CSSProperties } from 'react';
 import { BackButton } from '../components/BackButton';
-import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function ExamScreen() {
-  const { state, t, loc, tplByName, fmt, go, endExam } = useStethoscribe();
+  const { state, t, loc, tplByName, fmt, go, endExam, togglePause } = useStethoscribe();
   const exam = state.exam!;
   const examDone = state.activeIdx === -1;
 
@@ -16,51 +15,81 @@ export function ExamScreen() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <BackButton onClick={() => go('home', { nav: 'home' })} dark />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: color.examRecordingLabel, letterSpacing: '.3px' }}>
-                {t.recording} · {fmt(state.elapsed)}
+              <div style={{ fontSize: 13, fontWeight: 700, color: color.examRecordingLabel, letterSpacing: '.3px', textTransform: 'uppercase' }}>
+                {state.paused ? t.paused : t.recording} · {fmt(state.elapsed)}
               </div>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginTop: 2 }}>{loc(tplByName(exam.templateName), 'name')}</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <LangToggle variant="dark" />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: color.examLiveBg, padding: '8px 13px', borderRadius: 999 }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: color.tealBright, animation: 'ssBlink 1.1s infinite' }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: color.tealPale }}>{t.live}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: state.paused ? 'rgba(255,255,255,.12)' : color.examLiveBg, padding: '8px 13px', borderRadius: 999 }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: state.paused ? color.chevron3 : color.tealBright, animation: state.paused ? 'none' : 'ssBlink 1.1s infinite' }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: state.paused ? '#fff' : color.tealPale }}>{state.paused ? t.paused : t.live}</span>
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 0 18px' }}>
-          <div style={{ position: 'relative', width: 120, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: color.examRing, animation: 'ssPulse 2.4s ease-out infinite' }} />
-            <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: color.examRing, animation: 'ssPulse 2.4s ease-out infinite 1.2s' }} />
-            <span
-              style={{
-                position: 'relative',
-                width: 88,
-                height: 88,
-                borderRadius: '50%',
-                background: `linear-gradient(135deg,${color.tealBright},${color.teal})`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 14px 30px -8px rgba(45,212,176,.6)',
-              }}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28 }}>
+            <button
+              onClick={togglePause}
+              aria-label={state.paused ? 'Resume' : 'Pause'}
+              style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
             >
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke={color.examMicIcon} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="2" width="6" height="12" rx="3" />
-                <path d="M5 10a7 7 0 0 0 14 0M12 17v5" />
+              {state.paused ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              )}
+            </button>
+
+            <div style={{ position: 'relative', width: 120, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: color.examRing, animation: 'ssPulse 2.4s ease-out infinite', animationPlayState: state.paused ? 'paused' : 'running' }} />
+              <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: color.examRing, animation: 'ssPulse 2.4s ease-out infinite 1.2s', animationPlayState: state.paused ? 'paused' : 'running' }} />
+              <span
+                style={{
+                  position: 'relative',
+                  width: 88,
+                  height: 88,
+                  borderRadius: '50%',
+                  background: `linear-gradient(135deg,${color.tealBright},${color.teal})`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 14px 30px -8px rgba(45,212,176,.6)',
+                  opacity: state.paused ? 0.55 : 1,
+                  transition: 'opacity .2s',
+                }}
+              >
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke={color.examMicIcon} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M5 10a7 7 0 0 0 14 0M12 17v5" />
+                </svg>
+              </span>
+            </div>
+
+            <button
+              onClick={endExam}
+              aria-label="Stop"
+              style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
               </svg>
-            </span>
+            </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 22, marginTop: 14 }}>
             {[0, 0.15, 0.3, 0.45, 0.6].map((delay) => (
-              <span key={delay} style={{ width: 4, height: 22, borderRadius: 3, background: color.tealBright, animation: `ssBar .9s ease-in-out infinite ${delay}s` }} />
+              <span key={delay} style={{ width: 4, height: 22, borderRadius: 3, background: color.tealBright, animation: `ssBar .9s ease-in-out infinite ${delay}s`, animationPlayState: state.paused ? 'paused' : 'running' }} />
             ))}
           </div>
           <div style={{ fontSize: 15, fontWeight: 700, color: color.examHintText, marginTop: 12, textAlign: 'center', padding: '0 24px' }}>
-            {examDone ? t.allCaptured : t.listeningHint}
+            {state.paused ? t.pausedHint : examDone ? t.allCaptured : t.listeningHint}
           </div>
         </div>
 

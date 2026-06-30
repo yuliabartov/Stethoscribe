@@ -107,6 +107,7 @@ export interface AppState {
   examCats: ExamCategory[] | null;
   activeIdx: number;
   elapsed: number;
+  paused: boolean;
   review: ReviewState | null;
   editingId: string | null;
   builder: BuilderState | null;
