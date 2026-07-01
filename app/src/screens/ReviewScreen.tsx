@@ -3,7 +3,7 @@ import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function ReviewScreen() {
-  const { state, t, rtl, loc, tplByName, go, update, setField } = useStethoscribe();
+  const { state, t, rtl, loc, tplByName, go, update, setField, setReportName } = useStethoscribe();
   const review = state.review!;
   const lowCount = review.cats.filter((c) => c.low).length;
   const hasLow = lowCount > 0;
@@ -22,6 +22,62 @@ export function ReviewScreen() {
           <div style={{ fontSize: 13, fontWeight: 600, color: color.muted }}>
             {reviewTemplateName} · {t.today}
           </div>
+        </div>
+      </div>
+
+      <div style={{ margin: '14px 22px 0' }}>
+        <div
+          style={{
+            background: '#FFFFFF',
+            border: `1.5px solid ${color.borderCream2}`,
+            borderRadius: 18,
+            padding: '15px 16px',
+            boxShadow: '0 1px 0 rgba(23,58,75,.03)',
+          }}
+        >
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: color.inkMute, letterSpacing: '.3px', textTransform: 'uppercase' }}>{t.reportNameLabel}</div>
+          {state.editingId === '__name__' ? (
+            <input
+              value={review.name}
+              onChange={(e) => setReportName(e.target.value)}
+              onBlur={() => update({ editingId: null })}
+              placeholder={t.reportNamePlaceholder}
+              autoFocus
+              style={{
+                width: '100%',
+                marginTop: 8,
+                padding: '10px 12px',
+                border: `1.5px solid ${color.teal}`,
+                borderRadius: 12,
+                background: '#fff',
+                fontSize: 16,
+                fontWeight: 600,
+                color: color.ink,
+                outline: 'none',
+              }}
+            />
+          ) : (
+            <div
+              onClick={() => update({ editingId: '__name__' })}
+              style={{
+                marginTop: 7,
+                fontSize: 16.5,
+                fontWeight: 600,
+                color: review.name ? color.ink : color.muted,
+                lineHeight: 1.4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                cursor: 'pointer',
+              }}
+            >
+              <span>{review.name || t.untitledReport}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color.chevron2} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </div>
+          )}
         </div>
       </div>
 

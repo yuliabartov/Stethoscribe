@@ -13,7 +13,10 @@ const outer: CSSProperties = {
 const inner: CSSProperties = {
   position: 'relative',
   width: 'min(440px, 100vw)',
-  height: 'min(940px, 100vh)',
+  // dvh (not vh) tracks the *actual* visible viewport on iOS Safari, which
+  // shrinks when the toolbar or a recording indicator is showing — with plain
+  // vh, that chrome can clip/strand content at the bottom of the frame.
+  height: 'min(940px, 100dvh)',
   background: '#FBF8F2',
   overflow: 'hidden',
   borderRadius: 'clamp(0px, calc((100vw - 440px) * 999), 38px)',

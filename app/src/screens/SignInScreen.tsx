@@ -1,10 +1,21 @@
+import { useState } from 'react';
 import logoIcon from '../assets/logo-icon.png';
 import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function SignInScreen() {
-  const { t, go } = useStethoscribe();
+  const { t, signIn } = useStethoscribe();
+  const [pending, setPending] = useState(false);
+
+  const handleSignIn = async () => {
+    setPending(true);
+    try {
+      await signIn();
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <div className="scr" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '22px 32px 36px', overflow: 'auto' }}>
@@ -21,7 +32,8 @@ export function SignInScreen() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <button
-          onClick={() => go('home', { nav: 'home' })}
+          onClick={handleSignIn}
+          disabled={pending}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -36,6 +48,8 @@ export function SignInScreen() {
             fontSize: 16,
             fontWeight: 700,
             boxShadow: '0 6px 16px -8px rgba(23,58,75,.2)',
+            cursor: pending ? 'default' : 'pointer',
+            opacity: pending ? 0.6 : 1,
           }}
         >
           <span
@@ -54,7 +68,7 @@ export function SignInScreen() {
           >
             G
           </span>
-          {t.google}
+          {pending ? t.signingIn : t.google}
         </button>
         <p style={{ margin: 0, textAlign: 'center', fontSize: 12.5, color: color.muted, lineHeight: 1.5, padding: '0 10px' }}>{t.signinNote}</p>
       </div>

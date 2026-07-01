@@ -1,20 +1,38 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import {
+  deleteReportDoc,
+  deleteTemplateDoc,
+  getReportCats,
+  saveReportDoc,
+  saveTemplateDoc,
+  seedDefaultTemplates,
+  subscribeReports,
+  subscribeTemplates,
+} from '../data/firestoreStore';
+import { auth, googleProvider } from '../firebase';
 import { DICT, loc as locImpl } from '../i18n';
-import { INITIAL_REPORTS, INITIAL_TEMPLATES } from '../sampleData';
-import type { AppState, BuilderCategory, CategoryType, NavName, ReportItem, ScreenName, TemplateDef } from '../types';
+import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
+import { WebSpeechSource, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
+import type { AppState, AuthUser, BuilderCategory, CategoryDef, CategoryType, ExamCatStatus, ExamCategory, NavName, ReportItem, ReviewCategory, ScreenName, TemplateDef } from '../types';
 
 const initialState: AppState = {
   lang: 'en',
   screen: 'signin',
   nav: 'home',
+  user: null,
+  authReady: false,
+  dataReady: false,
   selectedTemplateId: 'gp',
-  templates: INITIAL_TEMPLATES,
-  reports: INITIAL_REPORTS,
+  templates: [],
+  reports: [],
   exam: null,
   examCats: null,
   activeIdx: -1,
   elapsed: 0,
   paused: false,
+  voiceActive: false,
+  micError: null,
   review: null,
   editingId: null,
   builder: null,
@@ -29,14 +47,63 @@ const initialState: AppState = {
   sort: 'recent',
 };
 
-type Updater = AppState | ((s: AppState) => AppState);
+function compileCats(cats: CategoryDef[]): CompiledCategory[] {
+  return cats.map((c, i) => {
+    const anchors = [c.name, c.nameHe]
+      .filter((v): v is string => !!v)
+      .map((v) => normalize(v))
+      .filter(Boolean);
+    let options: CompiledOption[] | undefined;
+    if (c.type === 'List' && c.options && c.options.length) {
+      options = c.options.map((opt, j) => {
+        const terms = [opt, c.optionsHe?.[j]]
+          .filter((v): v is string => !!v)
+          .map((v) => normalize(v))
+          .filter(Boolean);
+        return { value: opt, terms };
+      });
+    }
+    return { id: String(i), type: c.type, anchors, options };
+  });
+}
+
+function applyCapture(cats: ExamCategory[], fields: CapturedField[]): { cats: ExamCategory[]; activeIdx: number } {
+  const next = cats.map((c) => ({ ...c }));
+  for (const f of fields) {
+    const idx = Number(f.id);
+    if (next[idx]) {
+      next[idx].override = f.value;
+      next[idx].low = f.low;
+    }
+  }
+  let activeIdx = -1;
+  for (let i = 0; i < next.length; i++) {
+    const ov = next[i].override;
+    next[i].status = ov && ov.trim() ? 'done' : 'pending';
+  }
+  for (let i = 0; i < next.length; i++) {
+    if (next[i].status === 'pending') {
+      next[i].status = 'active';
+      activeIdx = i;
+      break;
+    }
+  }
+  return { cats: next, activeIdx };
+}
 
 interface StethoscribeApi {
   state: AppState;
   t: typeof DICT.en;
   rtl: boolean;
   dir: 'rtl' | 'ltr';
-  loc: (obj: Record<string, unknown> | null | undefined, key: string) => string;
+  loc: (obj: object | null | undefined, key: string) => string;
+  /** Subscribes to live "hearing…" transcript text without going through React
+   * state — while listening this fires several times/sec, and routing it
+   * through setState was re-rendering the whole screen that often, which on
+   * iOS was enough DOM churn to cancel an in-progress scroll on the list. */
+  onLiveTranscript: (cb: (text: string) => void) => () => void;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
   update: (patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void;
   go: (screen: ScreenName, extra?: Partial<AppState>) => void;
   tplById: (id: string) => TemplateDef | undefined;
@@ -48,6 +115,7 @@ interface StethoscribeApi {
   togglePause: () => void;
   reviewFromReport: (report: ReportItem) => void;
   setField: (id: string, val: string) => void;
+  setReportName: (name: string) => void;
   openBuilder: (id: string) => void;
   newBuilder: () => void;
   moveCat: (idx: number, dir: 1 | -1) => void;
@@ -65,15 +133,117 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const speechRef = useRef<WebSpeechSource | null>(null);
+  const compiledRef = useRef<CompiledCategory[]>([]);
+  const lastFinalRef = useRef('');
+  const lastUiAtRef = useRef(0);
+  const transcriptListenersRef = useRef(new Set<(text: string) => void>());
+
+  const onLiveTranscript = (cb: (text: string) => void) => {
+    transcriptListenersRef.current.add(cb);
+    return () => {
+      transcriptListenersRef.current.delete(cb);
+    };
+  };
+  const notifyTranscript = (text: string) => {
+    transcriptListenersRef.current.forEach((cb) => cb(text));
+  };
 
   const clearTimers = () => {
     if (tickRef.current) clearInterval(tickRef.current);
     if (clockRef.current) clearInterval(clockRef.current);
     tickRef.current = null;
     clockRef.current = null;
+    if (speechRef.current) {
+      speechRef.current.stop();
+      speechRef.current = null;
+    }
   };
 
   useEffect(() => () => clearTimers(), []);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        const user: AuthUser = {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          displayName: fbUser.displayName,
+          photoURL: fbUser.photoURL,
+        };
+        setState((s) => ({
+          ...s,
+          user,
+          authReady: true,
+          screen: s.screen === 'signin' ? 'home' : s.screen,
+          recipient: user.email || s.recipient,
+        }));
+      } else {
+        clearTimers();
+        setState((s) => ({
+          ...s,
+          user: null,
+          authReady: true,
+          screen: 'signin',
+          nav: 'home',
+          exam: null,
+          examCats: null,
+          review: null,
+          builder: null,
+          sent: false,
+        }));
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Sync templates/reports from Firestore for whichever account is signed in,
+  // so they're the same on every device. Re-subscribes whenever the uid
+  // changes; tears down on sign-out.
+  useEffect(() => {
+    const uid = state.user?.uid;
+    if (!uid) {
+      setState((s) => ({ ...s, dataReady: false, templates: [], reports: [] }));
+      return;
+    }
+    let cancelled = false;
+    const unsubTemplates = subscribeTemplates(uid, (templates, firstSnapshotEmpty) => {
+      if (cancelled) return;
+      if (firstSnapshotEmpty) {
+        // New account: seed starter templates. Don't mark dataReady yet — wait
+        // for the snapshot this write triggers, so Home never briefly renders
+        // with zero templates.
+        seedDefaultTemplates(uid).catch((err) => console.error('Seeding templates failed', err));
+        return;
+      }
+      setState((s) => ({ ...s, templates, dataReady: true }));
+    });
+    const unsubReports = subscribeReports(uid, (reports) => {
+      if (cancelled) return;
+      setState((s) => ({ ...s, reports }));
+    });
+    return () => {
+      cancelled = true;
+      unsubTemplates();
+      unsubReports();
+    };
+  }, [state.user?.uid]);
+
+  const signIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error('Google sign-in failed', err);
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await firebaseSignOut(auth);
+    } catch (err) {
+      console.error('Sign-out failed', err);
+    }
+  };
 
   const update = (patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => {
     setState((s) => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }));
@@ -111,28 +281,6 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const startExam = (id: string) => {
-    const t = tplById(id);
-    if (!t) return;
-    const cats = t.cats.map((c) => ({
-      name: c.name,
-      nameHe: c.nameHe,
-      type: c.type,
-      sample: c.sample,
-      sampleHe: c.sampleHe,
-      low: !!c.low,
-      override: null,
-      status: 'pending' as const,
-    }));
-    if (cats[0]) cats[0].status = 'active';
-    clearTimers();
-    update({ screen: 'exam', exam: { templateName: t.name }, examCats: cats, activeIdx: 0, elapsed: 0, paused: false });
-    tickRef.current = setInterval(advance, 1850);
-    clockRef.current = setInterval(() => setState((s) => (s.paused ? s : { ...s, elapsed: s.elapsed + 1 })), 1000);
-  };
-
-  const togglePause = () => update((s) => ({ paused: !s.paused }));
-
   const endExam = () => {
     clearTimers();
     setState((s) => {
@@ -146,14 +294,53 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         low: !!c.low,
         override: c.override || null,
       }));
-      return { ...s, screen: 'review', review: { templateName: s.exam!.templateName, cats }, editingId: null };
+      return { ...s, screen: 'review', review: { templateName: s.exam!.templateName, name: '', reportId: null, cats }, editingId: null, voiceActive: false };
+    });
+    notifyTranscript('');
+  };
+
+  // Drive live capture from the speech source. Re-segmenting the whole
+  // transcript on each result keeps field assignment stable. Restarts itself
+  // on resume; clearTimers() stops the mic when leaving the exam.
+  const startVoice = () => {
+    lastFinalRef.current = '';
+    lastUiAtRef.current = 0;
+    const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
+    const source = new WebSpeechSource(lang);
+    speechRef.current = source;
+    source.start({
+      onTranscript: (finalText, interim) => {
+        // Interim results fire many times per second. Re-parsing the whole
+        // transcript + re-rendering the app on each one froze scrolling/taps on
+        // the phone, so: throttle the cheap "hearing…" updates, and only run the
+        // heavy re-segmentation when the *finalized* transcript actually changes.
+        const finalChanged = finalText !== lastFinalRef.current;
+        const now = Date.now();
+        if (!finalChanged && now - lastUiAtRef.current < 250) return;
+        lastUiAtRef.current = now;
+        const heard = interim || finalText.split(/\s+/).filter(Boolean).slice(-8).join(' ');
+        // Live "hearing…" text bypasses React state entirely (see onLiveTranscript)
+        // so it never triggers a re-render — only an actual captured field does.
+        notifyTranscript(heard);
+        if (!finalChanged) return;
+        lastFinalRef.current = finalText;
+        const result = processTranscript(finalText, compiledRef.current);
+        setState((s) => {
+          if (!s.examCats || s.screen !== 'exam') return s;
+          const applied = applyCapture(s.examCats, result.fields);
+          return { ...s, examCats: applied.cats, activeIdx: applied.activeIdx };
+        });
+        if (result.stop) endExam();
+      },
+      onError: (code) => update({ micError: code }),
+      onEnd: () => {},
     });
   };
 
-  const reviewFromReport = (report: ReportItem) => {
-    const t = tplByName(report.template);
-    const cats = t.cats.map((c, idx) => ({
-      id: 'f' + idx,
+  const startExam = (id: string) => {
+    const t = tplById(id);
+    if (!t) return;
+    const cats = t.cats.map((c) => ({
       name: c.name,
       nameHe: c.nameHe,
       type: c.type,
@@ -161,8 +348,58 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       sampleHe: c.sampleHe,
       low: !!c.low,
       override: null,
+      status: 'pending' as ExamCatStatus,
     }));
-    go('review', { review: { templateName: t.name, cats }, editingId: null, nav: 'reports' });
+    if (cats[0]) cats[0].status = 'active';
+    clearTimers();
+    // Voice exam is phone-only (spec §9). On a phone we do real voice (or show a
+    // clear "unsupported browser" message); desktop keeps the simulated demo.
+    const onPhone = isMobileDevice();
+    const canVoice = onPhone && isSpeechSupported();
+    update({
+      screen: 'exam',
+      exam: { templateName: t.name },
+      examCats: cats,
+      activeIdx: 0,
+      elapsed: 0,
+      paused: false,
+      micError: onPhone && !canVoice ? 'unsupported' : null,
+      voiceActive: canVoice,
+    });
+    notifyTranscript('');
+    clockRef.current = setInterval(() => setState((s) => (s.paused ? s : { ...s, elapsed: s.elapsed + 1 })), 1000);
+    if (canVoice) {
+      compiledRef.current = compileCats(t.cats);
+      startVoice();
+    } else if (!onPhone) {
+      tickRef.current = setInterval(advance, 1850);
+    }
+  };
+
+  const togglePause = () => {
+    const nextPaused = !state.paused;
+    if (state.voiceActive) {
+      if (nextPaused) speechRef.current?.stop();
+      else startVoice();
+    }
+    if (nextPaused) notifyTranscript('');
+    update({ paused: nextPaused });
+  };
+
+  // Loads the report's actual captured findings from Firestore (the lightweight
+  // list subscription only carries date/time/template/name, not field values).
+  const reviewFromReport = async (report: ReportItem) => {
+    const t = tplByName(report.template);
+    const uid = state.user?.uid;
+    let cats: ReviewCategory[] = [];
+    if (uid) {
+      try {
+        cats = (await getReportCats(uid, report.id)) || [];
+      } catch (err) {
+        console.error('Load report failed', err);
+      }
+    }
+    go('review', { review: { templateName: t.name, name: report.name || '', reportId: report.id, cats }, editingId: null, nav: 'reports' });
   };
 
   const setField = (id: string, val: string) => {
@@ -172,6 +409,17 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         ? { ...s.review, cats: s.review.cats.map((c) => (c.id === id ? { ...c, override: val, low: false } : c)) }
         : s.review,
     }));
+  };
+
+  const setReportName = (name: string) => {
+    setState((s) => {
+      if (!s.review) return s;
+      const review = { ...s.review, name };
+      const reports = s.review.reportId
+        ? s.reports.map((r) => (r.id === s.review!.reportId ? { ...r, name: name.trim() || null } : r))
+        : s.reports;
+      return { ...s, review, reports };
+    });
   };
 
   const openBuilder = (id: string) => {
@@ -240,54 +488,70 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // Writes go to Firestore; the subscription set up above reflects the change
+  // back into state.templates/state.reports, so these don't mutate local
+  // state directly (aside from optimistic navigation/flags).
   const saveTemplate = () => {
-    setState((s) => {
-      const b = s.builder;
-      if (!b) return s;
-      const nm = b.name.trim() || DICT[s.lang].newTemplate;
-      const cats = b.cats.map((c) => ({
-        name: c.name,
-        nameHe: c.nameHe,
-        type: c.type,
-        options: c.options || undefined,
-        optionsHe: c.optionsHe || undefined,
-        sample: DICT.en.normal,
-        sampleHe: DICT.he.normal,
-      }));
-      let templates: TemplateDef[];
-      if (b.id) {
-        templates = s.templates.map((t) => (t.id === b.id ? { ...t, name: nm, cats } : t));
-      } else {
-        const id = 't' + Date.now();
-        templates = s.templates.concat([
-          { id, name: nm, nameHe: null, short: nm.slice(0, 2), shortHe: null, accent: '#8FB6A6', soft: '#DDEAE3', cats },
-        ]);
-      }
-      return { ...s, templates, screen: 'templates' };
-    });
+    const b = state.builder;
+    const uid = state.user?.uid;
+    if (!b || !uid) return;
+    const nm = b.name.trim() || DICT[state.lang].newTemplate;
+    const cats: CategoryDef[] = b.cats.map((c) => ({
+      name: c.name,
+      nameHe: c.nameHe ?? null,
+      type: c.type,
+      options: c.options ?? null,
+      optionsHe: c.optionsHe ?? null,
+      sample: DICT.en.normal,
+      sampleHe: DICT.he.normal,
+    }));
+    const existing = b.id ? tplById(b.id) : undefined;
+    const tpl: TemplateDef = {
+      id: b.id || 't' + Date.now(),
+      name: nm,
+      nameHe: existing?.nameHe ?? null,
+      short: existing?.short || nm.slice(0, 2),
+      shortHe: existing?.shortHe ?? null,
+      accent: existing?.accent || '#8FB6A6',
+      soft: existing?.soft || '#DDEAE3',
+      cats,
+    };
+    saveTemplateDoc(uid, tpl).catch((err) => console.error('Save template failed', err));
+    update({ screen: 'templates' });
   };
 
   const delTemplate = (id: string) => {
-    setState((s) => {
-      if (s.templates.length <= 1) return s;
-      const templates = s.templates.filter((t) => t.id !== id);
-      return { ...s, templates, selectedTemplateId: s.selectedTemplateId === id ? templates[0].id : s.selectedTemplateId };
-    });
+    const uid = state.user?.uid;
+    if (!uid || state.templates.length <= 1) return;
+    deleteTemplateDoc(uid, id).catch((err) => console.error('Delete template failed', err));
+    if (state.selectedTemplateId === id) {
+      const next = state.templates.find((t) => t.id !== id);
+      if (next) update({ selectedTemplateId: next.id });
+    }
   };
 
   const sendReport = () => {
+    const uid = state.user?.uid;
+    const review = state.review;
+    if (!uid || !review) return;
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
-    setState((s) => ({
-      ...s,
-      sent: true,
-      reports: [{ id: 'r' + Date.now(), date: 'Jun 28, 2026', time: hh + ':' + mm, template: s.review!.templateName }].concat(s.reports),
-    }));
+    const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    saveReportDoc(uid, review.reportId, {
+      date,
+      time: hh + ':' + mm,
+      template: review.templateName,
+      name: review.name.trim() || null,
+      cats: review.cats,
+    }).catch((err) => console.error('Save report failed', err));
+    update({ sent: true });
   };
 
   const delReport = (id: string) => {
-    setState((s) => ({ ...s, reports: s.reports.filter((r) => r.id !== id) }));
+    const uid = state.user?.uid;
+    if (!uid) return;
+    deleteReportDoc(uid, id).catch((err) => console.error('Delete report failed', err));
   };
 
   const rtl = state.lang === 'he';
@@ -297,6 +561,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     rtl,
     dir: rtl ? 'rtl' : 'ltr',
     loc: (obj, key) => locImpl(state.lang, obj, key),
+    onLiveTranscript,
+    signIn,
+    signOut,
     update,
     go,
     tplById,
@@ -308,6 +575,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     togglePause,
     reviewFromReport,
     setField,
+    setReportName,
     openBuilder,
     newBuilder,
     moveCat,

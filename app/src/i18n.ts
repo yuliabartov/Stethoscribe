@@ -4,6 +4,8 @@ export const DICT = {
   en: {
     tagline: 'You examine, it writes. Hands-free notes that fill in while you work.',
     google: 'Continue with Google',
+    signingIn: 'Signing in…',
+    signOut: 'Sign out',
     signinNote: 'Protected sign-in. No patient names are ever stored on this device.',
     today: 'Sunday, June 28',
     greetingPrefix: 'Good morning, ',
@@ -42,6 +44,10 @@ export const DICT = {
     listeningHint: 'Listening… speak your findings',
     pausedHint: 'Paused — tap play to resume',
     allCaptured: 'All sections captured — review when ready',
+    micDenied: 'Microphone unavailable — you can type findings in review.',
+    voiceUnsupported: 'Voice needs Safari on iPhone or Chrome on Android. You can type findings in review.',
+    demoHint: 'Demo preview — the voice exam runs on your phone.',
+    voiceLangUnavailable: 'Hebrew voice isn’t supported in this browser. Try Android Chrome, or wait for the native app.',
     listening: 'Listening',
     waiting: 'Waiting',
     capturing: 'Capturing…',
@@ -49,6 +55,9 @@ export const DICT = {
     endExam: 'End exam',
     reviewReport: 'Review report',
     check: 'Check',
+    reportNameLabel: 'REPORT NAME',
+    untitledReport: 'Untitled report',
+    reportNamePlaceholder: 'Name this report',
     exportTitle: 'Export & send',
     exportBtn: 'Export',
     sendBtn: 'Send',
@@ -77,6 +86,8 @@ export const DICT = {
   he: {
     tagline: 'אתה בודק, היא כותבת. רישום ללא ידיים שמתמלא תוך כדי העבודה.',
     google: 'המשך עם Google',
+    signingIn: 'מתחבר…',
+    signOut: 'התנתק',
     signinNote: 'כניסה מאובטחת. שמות מטופלים לעולם אינם נשמרים במכשיר זה.',
     today: 'יום ראשון, 28 ביוני',
     greetingPrefix: 'בוקר טוב, ',
@@ -115,6 +126,10 @@ export const DICT = {
     listeningHint: 'מקשיב… הקרא את הממצאים',
     pausedHint: 'בהפסקה — הקש על הפעלה כדי להמשיך',
     allCaptured: 'כל המקטעים נקלטו — עבור לסקירה כשתהיה מוכן',
+    micDenied: 'המיקרופון אינו זמין — ניתן להקליד ממצאים בסקירה.',
+    voiceUnsupported: 'הקול דורש Safari באייפון או Chrome באנדרואיד. ניתן להקליד ממצאים בסקירה.',
+    demoHint: 'תצוגה לדוגמה — בדיקת הקול פועלת בטלפון.',
+    voiceLangUnavailable: 'קול בעברית אינו נתמך בדפדפן זה. נסה Chrome באנדרואיד, או המתן לאפליקציה הנייטיב.',
     listening: 'מקשיב',
     waiting: 'ממתין',
     capturing: 'קולט…',
@@ -122,6 +137,9 @@ export const DICT = {
     endExam: 'סיים בדיקה',
     reviewReport: 'סקירת דוח',
     check: 'לבדוק',
+    reportNameLabel: 'שם הדוח',
+    untitledReport: 'דוח ללא שם',
+    reportNamePlaceholder: 'תן שם לדוח זה',
     exportTitle: 'ייצוא ושליחה',
     exportBtn: 'ייצוא',
     sendBtn: 'שליחה',
@@ -151,7 +169,7 @@ export const DICT = {
 
 export type Dict = typeof DICT.en;
 
-export function loc<T extends Record<string, unknown> | null | undefined>(
+export function loc<T extends object | null | undefined>(
   lang: Lang,
   obj: T,
   key: string,

@@ -1,12 +1,16 @@
+import { useState } from 'react';
 import logoIcon from '../assets/logo-icon.png';
 import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function HomeScreen() {
-  const { state, t, loc, rtl, go, update, startExam, reviewFromReport, accentFor, tplByName } = useStethoscribe();
+  const { state, t, loc, rtl, go, update, signOut, startExam, reviewFromReport, accentFor, tplByName } = useStethoscribe();
+  const [avatarError, setAvatarError] = useState(false);
 
   const sel = state.templates.find((tp) => tp.id === state.selectedTemplateId) || state.templates[0];
+  const firstName = state.user?.displayName?.split(' ')[0] || t.clinician;
+  const initial = (state.user?.displayName || state.user?.email || '?').charAt(0).toUpperCase();
   const recentReports = state.reports.slice(0, 4);
 
   return (
@@ -18,11 +22,44 @@ export function HomeScreen() {
             <div style={{ fontSize: 13, color: color.muted, fontWeight: 600 }}>{t.today}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: color.ink, letterSpacing: '-.3px' }}>
               {t.greetingPrefix}
-              {t.clinician}
+              {firstName}
             </div>
           </div>
         </div>
-        <LangToggle />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <LangToggle />
+          <button
+            onClick={signOut}
+            title={t.signOut}
+            aria-label={t.signOut}
+            style={{
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              padding: 0,
+              borderRadius: '50%',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: color.inkSoft,
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            {state.user?.photoURL && !avatarError ? (
+              <img
+                src={state.user.photoURL}
+                alt=""
+                referrerPolicy="no-referrer"
+                onError={() => setAvatarError(true)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              <span style={{ color: color.white, fontSize: 15, fontWeight: 800 }}>{initial}</span>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="scr" style={{ flex: 1, overflow: 'auto', padding: '8px 22px 110px' }}>

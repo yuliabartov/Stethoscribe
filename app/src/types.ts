@@ -29,6 +29,7 @@ export interface ReportItem {
   date: string;
   time: string;
   template: string;
+  name: string | null;
 }
 
 export type ExamCatStatus = 'pending' | 'active' | 'done';
@@ -82,6 +83,8 @@ export interface ExamState {
 
 export interface ReviewState {
   templateName: string;
+  name: string;
+  reportId: string | null;
   cats: ReviewCategory[];
 }
 
@@ -96,10 +99,20 @@ export interface ExportFormats {
   word: boolean;
 }
 
+export interface AuthUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
+
 export interface AppState {
   lang: Lang;
   screen: ScreenName;
   nav: NavName;
+  user: AuthUser | null;
+  authReady: boolean;
+  dataReady: boolean;
   selectedTemplateId: string;
   templates: TemplateDef[];
   reports: ReportItem[];
@@ -108,6 +121,8 @@ export interface AppState {
   activeIdx: number;
   elapsed: number;
   paused: boolean;
+  voiceActive: boolean;
+  micError: string | null;
   review: ReviewState | null;
   editingId: string | null;
   builder: BuilderState | null;

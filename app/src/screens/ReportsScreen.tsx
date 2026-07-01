@@ -24,7 +24,9 @@ export function ReportsScreen() {
   const q = state.search.trim().toLowerCase();
   if (q) {
     list = list.filter((r) =>
-      (loc(tplByName(r.template), 'name') + ' ' + r.template + ' ' + r.date + ' ' + r.time).toLowerCase().includes(q),
+      (loc(tplByName(r.template), 'name') + ' ' + r.template + ' ' + (r.name || '') + ' ' + r.date + ' ' + r.time)
+        .toLowerCase()
+        .includes(q),
     );
   }
   const noResults = list.length === 0;
@@ -85,9 +87,9 @@ export function ReportsScreen() {
               >
                 <span style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, background: accentFor(r.template) }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: color.ink }}>{loc(tplByName(r.template), 'name')}</span>
+                  <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: color.ink }}>{r.name || loc(tplByName(r.template), 'name')}</span>
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.muted, marginTop: 2 }}>
-                    {r.date} · {r.time}
+                    {r.name ? `${loc(tplByName(r.template), 'name')} · ` : ''}{r.date} · {r.time}
                   </span>
                 </span>
                 <svg

@@ -35,6 +35,11 @@ button {
   height: 0;
 }
 
+.scr {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 @keyframes ssPulse {
   0% {
     transform: scale(0.75);

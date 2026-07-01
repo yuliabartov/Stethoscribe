@@ -1,4 +1,4 @@
-import type { ReportItem, TemplateDef } from './types';
+import type { TemplateDef } from './types';
 
 export const INITIAL_TEMPLATES: TemplateDef[] = [
   {
@@ -157,17 +157,4 @@ export const INITIAL_TEMPLATES: TemplateDef[] = [
       { name: 'Notes', nameHe: 'הערות', type: 'Free text', sample: 'Immunizations up to date', sampleHe: 'חיסונים מעודכנים' },
     ],
   },
-];
-
-export const INITIAL_REPORTS: ReportItem[] = [
-  { id: 'r1', date: 'Jun 28, 2026', time: '09:14', template: 'General Physical' },
-  { id: 'r2', date: 'Jun 27, 2026', time: '16:42', template: 'Cardiac Exam' },
-  { id: 'r3', date: 'Jun 27, 2026', time: '11:05', template: 'Pediatric Check' },
-  { id: 'r4', date: 'Jun 26, 2026', time: '14:20', template: 'Dermatology' },
-  { id: 'r5', date: 'Jun 25, 2026', time: '08:50', template: 'General Physical' },
-  { id: 'r6', date: 'Jun 24, 2026', time: '15:33', template: 'Cardiac Exam' },
-  { id: 'r7', date: 'Jun 23, 2026', time: '10:05', template: 'Dermatology' },
-  { id: 'r8', date: 'Jun 22, 2026', time: '13:48', template: 'Pediatric Check' },
-  { id: 'r9', date: 'Jun 21, 2026', time: '09:30', template: 'General Physical' },
-  { id: 'r10', date: 'Jun 20, 2026', time: '17:12', template: 'Cardiac Exam' },
 ];
