@@ -1,28 +1,28 @@
-// Google OAuth access token cache for the Gmail API.
-//
-// Firebase Auth manages the ID token / refresh cycle for us, but it does NOT
-// persist or expose the Google OAuth access token — that's only handed back
-// once, in the credential from signInWithPopup. We stash it here so the send
-// flow can reach it without threading it through React state (where it would
-// leak into every serialized state snapshot).
-//
-// Access tokens are short-lived (~1 hour). When getToken() returns null (never
-// captured, or cleared after a failure), the caller re-runs signInWithPopup
-// silently — the doctor's account and scope grant are still cached by Google,
-// so it's typically a brief popup flash, not a full sign-in.
 import { GoogleAuthProvider, type UserCredential } from 'firebase/auth';
 
 let accessToken: string | null = null;
+let capturedAt = 0;
+
+// Google access tokens live ~3600s; treat as stale after 50 min.
+const MAX_AGE_MS = 50 * 60 * 1000;
 
 export function captureAccessToken(cred: UserCredential): void {
   const credential = GoogleAuthProvider.credentialFromResult(cred);
-  if (credential?.accessToken) accessToken = credential.accessToken;
+  if (credential?.accessToken) {
+    accessToken = credential.accessToken;
+    capturedAt = Date.now();
+  }
 }
 
 export function getAccessToken(): string | null {
   return accessToken;
 }
 
+export function isTokenFresh(): boolean {
+  return accessToken !== null && Date.now() - capturedAt < MAX_AGE_MS;
+}
+
 export function clearAccessToken(): void {
   accessToken = null;
+  capturedAt = 0;
 }

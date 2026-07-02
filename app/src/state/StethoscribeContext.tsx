@@ -11,7 +11,7 @@ import {
   subscribeTemplates,
 } from '../data/firestoreStore';
 import { auth, googleProvider } from '../firebase';
-import { captureAccessToken, clearAccessToken, getAccessToken } from '../auth/googleToken';
+import { captureAccessToken, clearAccessToken, getAccessToken, isTokenFresh } from '../auth/googleToken';
 import { DICT, loc as locImpl } from '../i18n';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
 import { WebSpeechSource, ensureMicPermission, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
@@ -741,8 +741,20 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     update({ sending: true, sendError: null });
 
     try {
+      // Refresh the token FIRST — before any dynamic imports or async work —
+      // so the signInWithPopup call stays inside Safari's user-gesture window.
+      // Safari blocks popups that fire after an async boundary (like await
+      // import()), which caused "sign-in expired" errors on the second send.
+      if (!isTokenFresh()) {
+        clearAccessToken();
+        const cred = await signInWithPopup(auth, googleProvider);
+        captureAccessToken(cred);
+      }
+      const token = getAccessToken();
+      if (!token) throw new Error('No access token after sign-in');
+
       const { generateReportDocx, reportFilename } = await import('../docx/reportDocx');
-      const { sendReportEmail, GmailSendFailure } = await import('../mail/gmailSend');
+      const { sendReportEmail } = await import('../mail/gmailSend');
 
       const tpl = tplByName(review.templateName);
       const templateDisplayName = locImpl(state.lang, tpl, 'name') || review.templateName;
@@ -752,56 +764,15 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       const subject = `Stethoscribe. ${reportDisplayName}`;
       const body = DICT[state.lang].emailBody;
 
-      // Access token may be stale (1hr TTL) or missing entirely if the user
-      // signed in before this feature landed. Re-open signInWithPopup — Google
-      // remembers the account + scope grant, so it's usually just a flash.
-      const popupWithTimeout = (timeoutMs = 30_000) => {
-        return Promise.race([
-          signInWithPopup(auth, googleProvider),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Sign-in timed out')), timeoutMs),
-          ),
-        ]);
-      };
-
-      let token = getAccessToken();
-      if (!token) {
-        const cred = await popupWithTimeout();
-        captureAccessToken(cred);
-        token = getAccessToken();
-      }
-      if (!token) throw new Error('No access token after sign-in');
-
-      try {
-        await sendReportEmail({
-          accessToken: token,
-          to: state.recipient,
-          from: user.email,
-          subject,
-          body,
-          docxBlob,
-          filename,
-        });
-      } catch (err) {
-        if (err instanceof GmailSendFailure && err.code === 'auth') {
-          clearAccessToken();
-          const cred = await popupWithTimeout();
-          captureAccessToken(cred);
-          const fresh = getAccessToken();
-          if (!fresh) throw err;
-          await sendReportEmail({
-            accessToken: fresh,
-            to: state.recipient,
-            from: user.email,
-            subject,
-            body,
-            docxBlob,
-            filename,
-          });
-        } else {
-          throw err;
-        }
-      }
+      await sendReportEmail({
+        accessToken: token,
+        to: state.recipient,
+        from: user.email,
+        subject,
+        body,
+        docxBlob,
+        filename,
+      });
 
       // Persist the report only after Gmail actually accepted it — otherwise
       // a failed send would leave a "sent" row in the doctor's list.
