@@ -1,12 +1,4 @@
-// Word (.docx) generator for a completed exam report.
-//
-// First-pass minimal formatting: each field is a single "{Name} - {Content}"
-// paragraph, in the order they were captured; empty content still emits the
-// name (so nothing is silently dropped). Structure is deliberately split into
-// (1) a header block, (2) a per-field renderer, and (3) the document
-// assembly — later iterations can swap the field renderer for a table row or
-// add branded headers/footers without disturbing the pipeline shape.
-import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
+import { Document, Packer, Paragraph, TextRun } from 'docx';
 import type { Lang, ReviewState } from '../types';
 import { loc } from '../i18n';
 
@@ -16,25 +8,30 @@ interface ReportDocxInput {
   lang: Lang;
 }
 
+function rtlParagraph(runs: TextRun[], extra?: Record<string, unknown>): Paragraph {
+  return new Paragraph({
+    ...extra,
+    children: runs,
+    bidirectional: true,
+    alignment: 'right' as never,
+  });
+}
+
 function renderField(name: string, content: string): Paragraph {
   const text = content ? `${name} - ${content}` : `${name} -`;
-  return new Paragraph({
-    children: [new TextRun({ text, font: 'David', size: 22, rightToLeft: true })],
-    spacing: { after: 120 },
-    bidirectional: true,
-    alignment: AlignmentType.RIGHT,
-  });
+  return rtlParagraph(
+    [new TextRun({ text, font: 'David', size: 22, rightToLeft: true })],
+    { spacing: { after: 120 } },
+  );
 }
 
 function renderHeader(templateName: string, reportName: string): Paragraph[] {
   const title = reportName?.trim() || templateName;
   return [
-    new Paragraph({
-      children: [new TextRun({ text: title, bold: true, font: 'David', size: 32, rightToLeft: true })],
-      spacing: { after: 200 },
-      bidirectional: true,
-      alignment: AlignmentType.RIGHT,
-    }),
+    rtlParagraph(
+      [new TextRun({ text: title, bold: true, font: 'David', size: 32, rightToLeft: true })],
+      { spacing: { after: 200 } },
+    ),
   ];
 }
 
