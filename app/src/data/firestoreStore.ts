@@ -50,6 +50,8 @@ function sanitizeReviewCats(cats: ReviewCategory[]): DocumentData[] {
     name: c.name,
     nameHe: c.nameHe ?? null,
     type: c.type,
+    options: c.options ?? null,
+    optionsHe: c.optionsHe ?? null,
     sample: c.sample,
     sampleHe: c.sampleHe ?? null,
     low: c.low,

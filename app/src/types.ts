@@ -38,6 +38,8 @@ export interface ExamCategory {
   name: string;
   nameHe?: string | null;
   type: CategoryType;
+  options?: string[] | null;
+  optionsHe?: string[] | null;
   sample: string;
   sampleHe?: string;
   low: boolean;
@@ -50,6 +52,8 @@ export interface ReviewCategory {
   name: string;
   nameHe?: string | null;
   type: CategoryType;
+  options?: string[] | null;
+  optionsHe?: string[] | null;
   sample: string;
   sampleHe?: string;
   low: boolean;
@@ -123,6 +127,10 @@ export interface AppState {
   paused: boolean;
   voiceActive: boolean;
   micError: string | null;
+  /** Report-editor dictation: whether the mic is currently listening. */
+  dictating: boolean;
+  /** Report-editor dictation error code (unsupported / not-allowed / …). */
+  dictationError: string | null;
   review: ReviewState | null;
   editingId: string | null;
   builder: BuilderState | null;

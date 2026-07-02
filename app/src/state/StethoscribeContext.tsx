@@ -13,11 +13,11 @@ import {
 import { auth, googleProvider } from '../firebase';
 import { DICT, loc as locImpl } from '../i18n';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
-import { WebSpeechSource, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
+import { WebSpeechSource, ensureMicPermission, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
 import type { AppState, AuthUser, BuilderCategory, CategoryDef, CategoryType, ExamCatStatus, ExamCategory, NavName, ReportItem, ReviewCategory, ScreenName, TemplateDef } from '../types';
 
 const initialState: AppState = {
-  lang: 'en',
+  lang: 'he',
   screen: 'signin',
   nav: 'home',
   user: null,
@@ -33,6 +33,8 @@ const initialState: AppState = {
   paused: false,
   voiceActive: false,
   micError: null,
+  dictating: false,
+  dictationError: null,
   review: null,
   editingId: null,
   builder: null,
@@ -102,6 +104,15 @@ interface StethoscribeApi {
    * through setState was re-rendering the whole screen that often, which on
    * iOS was enough DOM churn to cancel an in-progress scroll on the list. */
   onLiveTranscript: (cb: (text: string) => void) => () => void;
+  /** Subscribes to real-time field-value previews derived from the *interim*
+   * (not-yet-final) dictation transcript — lets the report editor show
+   * streaming ghost text per field instead of waiting for a pause. Same
+   * bypass-React-state rationale as onLiveTranscript. */
+  onPartialFields: (cb: (fields: CapturedField[]) => void) => () => void;
+  /** Report-editor dictation toggle. Reuses the exam's capture pipeline so
+   * spoken findings route into the report's fields by category — hands-free,
+   * with no focused input, matching how the live exam records. */
+  toggleDictation: () => void;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   update: (patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void;
@@ -115,6 +126,7 @@ interface StethoscribeApi {
   togglePause: () => void;
   reviewFromReport: (report: ReportItem) => void;
   setField: (id: string, val: string) => void;
+  setExamField: (idx: number, val: string) => void;
   setReportName: (name: string) => void;
   openBuilder: (id: string) => void;
   newBuilder: () => void;
@@ -123,6 +135,7 @@ interface StethoscribeApi {
   confirmAdd: () => void;
   saveTemplate: () => void;
   delTemplate: (id: string) => void;
+  saveReport: () => void;
   sendReport: () => void;
   delReport: (id: string) => void;
 }
@@ -138,6 +151,19 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   const lastFinalRef = useRef('');
   const lastUiAtRef = useRef(0);
   const transcriptListenersRef = useRef(new Set<(text: string) => void>());
+  // Report-editor dictation: its own speech source + compiled review categories,
+  // and the last finalized transcript. Uses the exact same capture pipeline as
+  // the live exam (compileCats + processTranscript) so spoken findings route
+  // into the report's fields by category — no focused input / keyboard, which is
+  // what made the exam work on iOS while a focused-text-field approach didn't.
+  const dictationRef = useRef<WebSpeechSource | null>(null);
+  const compiledReviewRef = useRef<CompiledCategory[]>([]);
+  const lastDictationFinalRef = useRef('');
+  const lastDictationUiAtRef = useRef(0);
+  // Fields matched from the *interim* (not-yet-final) transcript — the
+  // real-time preview shown as ghost text in the report editor until the
+  // phrase finalizes and the value commits into state.review.
+  const partialFieldsListenersRef = useRef(new Set<(fields: CapturedField[]) => void>());
 
   const onLiveTranscript = (cb: (text: string) => void) => {
     transcriptListenersRef.current.add(cb);
@@ -147,6 +173,15 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   };
   const notifyTranscript = (text: string) => {
     transcriptListenersRef.current.forEach((cb) => cb(text));
+  };
+  const onPartialFields = (cb: (fields: CapturedField[]) => void) => {
+    partialFieldsListenersRef.current.add(cb);
+    return () => {
+      partialFieldsListenersRef.current.delete(cb);
+    };
+  };
+  const notifyPartialFields = (fields: CapturedField[]) => {
+    partialFieldsListenersRef.current.forEach((cb) => cb(fields));
   };
 
   const clearTimers = () => {
@@ -158,6 +193,12 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       speechRef.current.stop();
       speechRef.current = null;
     }
+    // Stop report-editor dictation too — leaving the screen must release the mic.
+    if (dictationRef.current) {
+      dictationRef.current.stop();
+      dictationRef.current = null;
+    }
+    lastDictationFinalRef.current = '';
   };
 
   useEffect(() => () => clearTimers(), []);
@@ -178,6 +219,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
           screen: s.screen === 'signin' ? 'home' : s.screen,
           recipient: user.email || s.recipient,
         }));
+        if (isMobileDevice()) ensureMicPermission();
       } else {
         clearTimers();
         setState((s) => ({
@@ -289,12 +331,30 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         name: c.name,
         nameHe: c.nameHe,
         type: c.type,
+        options: c.options,
+        optionsHe: c.optionsHe,
         sample: c.sample,
         sampleHe: c.sampleHe,
         low: !!c.low,
         override: c.override || null,
       }));
-      return { ...s, screen: 'review', review: { templateName: s.exam!.templateName, name: '', reportId: null, cats }, editingId: null, voiceActive: false };
+      const templateName = s.exam!.templateName;
+      const uid = s.user?.uid;
+      const tplDisplayName = s.lang === 'he'
+        ? (s.templates.find((tp) => tp.name === templateName)?.nameHe || templateName)
+        : templateName;
+      const sameTemplateCount = s.reports.filter((r) => r.template === templateName).length;
+      const defaultName = `${tplDisplayName} ${sameTemplateCount + 1}`;
+      if (uid) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        saveReportDoc(uid, null, { date, time: hh + ':' + mm, template: templateName, name: defaultName, cats })
+          .then((id) => setState((prev) => prev.review ? { ...prev, review: { ...prev.review, reportId: id } } : prev))
+          .catch((err) => console.error('Auto-save report failed', err));
+      }
+      return { ...s, screen: 'review', review: { templateName, name: defaultName, reportId: null, cats }, editingId: null, voiceActive: false, dictating: false, dictationError: null };
     });
     notifyTranscript('');
   };
@@ -327,7 +387,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         const result = processTranscript(finalText, compiledRef.current);
         setState((s) => {
           if (!s.examCats || s.screen !== 'exam') return s;
-          const applied = applyCapture(s.examCats, result.fields);
+          // Don't let voice clobber the field the doctor is manually editing.
+          const editingIdx = s.editingId?.startsWith('e') ? Number(s.editingId.slice(1)) : -1;
+          const fields = editingIdx >= 0 ? result.fields.filter((f) => Number(f.id) !== editingIdx) : result.fields;
+          const applied = applyCapture(s.examCats, fields);
           return { ...s, examCats: applied.cats, activeIdx: applied.activeIdx };
         });
         if (result.stop) endExam();
@@ -344,6 +407,8 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       name: c.name,
       nameHe: c.nameHe,
       type: c.type,
+      options: c.options,
+      optionsHe: c.optionsHe,
       sample: c.sample,
       sampleHe: c.sampleHe,
       low: !!c.low,
@@ -363,6 +428,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       activeIdx: 0,
       elapsed: 0,
       paused: false,
+      editingId: null,
       micError: onPhone && !canVoice ? 'unsupported' : null,
       voiceActive: canVoice,
     });
@@ -386,6 +452,92 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     update({ paused: nextPaused });
   };
 
+  const startDictation = () => {
+    if (state.dictating) return;
+    if (!state.review) return;
+    if (!isSpeechSupported()) {
+      update({ dictationError: 'unsupported' });
+      return;
+    }
+    // Chrome's recognizer round-trips audio to Google's servers — fail fast
+    // with a clear message instead of letting the engine spin on a dead
+    // connection (Safari's on-device engine ignores this and works offline).
+    if (!navigator.onLine) {
+      update({ dictationError: 'network' });
+      return;
+    }
+    lastDictationFinalRef.current = '';
+    lastDictationUiAtRef.current = 0;
+    // Same compile step the exam uses, but over the report's own categories, so
+    // spoken section names route findings to the matching fields.
+    compiledReviewRef.current = compileCats(state.review.cats);
+    const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
+    const source = new WebSpeechSource(lang);
+    dictationRef.current = source;
+    source.start({
+      onTranscript: (finalText, interim) => {
+        // Interim results fire many times per second — throttle the cheap
+        // "hearing…"/preview updates the same way the exam does, but never
+        // throttle away an actual finalized-transcript change.
+        const finalChanged = finalText !== lastDictationFinalRef.current;
+        const now = Date.now();
+        if (!finalChanged && now - lastDictationUiAtRef.current < 200) return;
+        lastDictationUiAtRef.current = now;
+
+        notifyTranscript(interim || finalText.split(/\s+/).filter(Boolean).slice(-6).join(' '));
+
+        // Real-time preview: re-parse everything heard so far — finalized text
+        // plus the words still in flight — so matched fields update as the
+        // physician talks, not only once a phrase finalizes. Shown as ghost
+        // text until the finalized commit below replaces it with the real value.
+        const previewText = (finalText + (interim ? ' ' + interim : '')).trim();
+        if (previewText) {
+          notifyPartialFields(processTranscript(previewText, compiledReviewRef.current).fields);
+        }
+
+        if (!finalChanged) return;
+        lastDictationFinalRef.current = finalText;
+        const result = processTranscript(finalText, compiledReviewRef.current);
+        setState((s) => {
+          if (!s.review || s.screen !== 'review') return s;
+          // Don't clobber a field the doctor is currently hand-editing.
+          const editingIdx = s.review.cats.findIndex((c) => c.id === s.editingId);
+          const cats = s.review.cats.slice();
+          for (const f of result.fields) {
+            const idx = Number(f.id);
+            if (idx === editingIdx || !cats[idx]) continue;
+            cats[idx] = { ...cats[idx], override: f.value, low: f.low };
+          }
+          return { ...s, review: { ...s.review, cats } };
+        });
+        // The preview above is now superseded by the committed value; clear
+        // the ghost overlay so it doesn't sit duplicated on top of real text.
+        notifyPartialFields([]);
+      },
+      onError: (code) => {
+        dictationRef.current = null;
+        notifyPartialFields([]);
+        update({ dictationError: code, dictating: false });
+      },
+      onEnd: () => {},
+    });
+    notifyTranscript('');
+    update({ dictating: true, dictationError: null });
+  };
+
+  const stopDictation = () => {
+    dictationRef.current?.stop();
+    dictationRef.current = null;
+    notifyTranscript('');
+    notifyPartialFields([]);
+    update({ dictating: false });
+  };
+
+  const toggleDictation = () => {
+    if (state.dictating) stopDictation();
+    else startDictation();
+  };
+
   // Loads the report's actual captured findings from Firestore (the lightweight
   // list subscription only carries date/time/template/name, not field values).
   const reviewFromReport = async (report: ReportItem) => {
@@ -399,7 +551,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         console.error('Load report failed', err);
       }
     }
-    go('review', { review: { templateName: t.name, name: report.name || '', reportId: report.id, cats }, editingId: null, nav: 'reports' });
+    go('review', { review: { templateName: t.name, name: report.name || '', reportId: report.id, cats }, editingId: null, nav: 'reports', dictating: false, dictationError: null });
   };
 
   const setField = (id: string, val: string) => {
@@ -409,6 +561,32 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         ? { ...s.review, cats: s.review.cats.map((c) => (c.id === id ? { ...c, override: val, low: false } : c)) }
         : s.review,
     }));
+  };
+
+  // Manual override of a single field during the live exam (tap to fix what
+  // voice mis-heard). Recomputes status/active exactly like applyCapture so a
+  // filled field reads as "done" and the active marker moves to the next
+  // still-empty one — clearing a field sends it back to pending/active.
+  const setExamField = (idx: number, val: string) => {
+    setState((s) => {
+      if (!s.examCats || !s.examCats[idx]) return s;
+      const cats = s.examCats.map((c) => ({ ...c }));
+      cats[idx].override = val;
+      cats[idx].low = false;
+      let activeIdx = -1;
+      for (let i = 0; i < cats.length; i++) {
+        const ov = cats[i].override;
+        cats[i].status = ov && ov.trim() ? 'done' : 'pending';
+      }
+      for (let i = 0; i < cats.length; i++) {
+        if (cats[i].status === 'pending') {
+          cats[i].status = 'active';
+          activeIdx = i;
+          break;
+        }
+      }
+      return { ...s, examCats: cats, activeIdx };
+    });
   };
 
   const setReportName = (name: string) => {
@@ -530,7 +708,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const sendReport = () => {
+  const saveReport = () => {
     const uid = state.user?.uid;
     const review = state.review;
     if (!uid || !review) return;
@@ -545,6 +723,26 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       name: review.name.trim() || null,
       cats: review.cats,
     }).catch((err) => console.error('Save report failed', err));
+    go('reports', { nav: 'reports' });
+  };
+
+  const sendReport = () => {
+    const uid = state.user?.uid;
+    const review = state.review;
+    if (!uid || !review) return;
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    saveReportDoc(uid, review.reportId, {
+      date,
+      time: hh + ':' + mm,
+      template: review.templateName,
+      name: review.name.trim() || null,
+      cats: review.cats,
+    })
+      .then((id) => setState((s) => s.review ? { ...s, review: { ...s.review, reportId: id } } : s))
+      .catch((err) => console.error('Save report failed', err));
     update({ sent: true });
   };
 
@@ -562,6 +760,8 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     dir: rtl ? 'rtl' : 'ltr',
     loc: (obj, key) => locImpl(state.lang, obj, key),
     onLiveTranscript,
+    onPartialFields,
+    toggleDictation,
     signIn,
     signOut,
     update,
@@ -575,6 +775,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     togglePause,
     reviewFromReport,
     setField,
+    setExamField,
     setReportName,
     openBuilder,
     newBuilder,
@@ -583,6 +784,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     confirmAdd,
     saveTemplate,
     delTemplate,
+    saveReport,
     sendReport,
     delReport,
   };

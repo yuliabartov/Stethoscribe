@@ -61,6 +61,25 @@ export function isMobileDevice(): boolean {
   return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
 }
 
+// Pre-request microphone access via getUserMedia. Browsers persist this grant
+// per origin, so the user only sees the permission prompt once — subsequent
+// SpeechRecognition.start() calls reuse it silently. Call this early (e.g.
+// after sign-in) so the exam can start without an extra prompt.
+let micGranted = false;
+export async function ensureMicPermission(): Promise<'granted' | 'denied' | 'unsupported'> {
+  if (micGranted) return 'granted';
+  if (!navigator.mediaDevices?.getUserMedia) return 'unsupported';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Stop the stream immediately — we just needed the permission grant.
+    stream.getTracks().forEach((t) => t.stop());
+    micGranted = true;
+    return 'granted';
+  } catch {
+    return 'denied';
+  }
+}
+
 export class WebSpeechSource {
   private rec: SpeechRec | null = null;
   private finalText = '';
@@ -102,12 +121,15 @@ export class WebSpeechSource {
       // These are normal in continuous use (silence, our own stop) — don't surface.
       if (e.error === 'no-speech' || e.error === 'aborted') return;
       // Fatal errors (Hebrew not supported by this browser, permission denied,
-      // no mic) — stop the auto-restart loop instead of spinning on them.
+      // no mic, no connectivity — Chrome's engine round-trips to Google's
+      // servers, so a dropped connection surfaces here) — stop the auto-restart
+      // loop instead of spinning on them.
       if (
         e.error === 'not-allowed' ||
         e.error === 'service-not-allowed' ||
         e.error === 'language-not-supported' ||
-        e.error === 'audio-capture'
+        e.error === 'audio-capture' ||
+        e.error === 'network'
       ) {
         this.active = false;
       }

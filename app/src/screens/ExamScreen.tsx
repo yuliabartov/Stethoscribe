@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, type CSSProperties } from 'react';
 import { BackButton } from '../components/BackButton';
+import { FieldEditor } from '../components/FieldEditor';
 import { loc as locField, type Dict } from '../i18n';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
@@ -8,16 +9,28 @@ import type { ExamCategory, Lang } from '../types';
 // The card list is isolated and memoized so the per-second timer and live
 // "hearing…" transcript updates don't re-render it — re-rendering it mid-scroll
 // cancels the touch scroll on iOS. It only re-renders when the fields change.
+// Every callback prop below must be referentially stable (see the useRef-backed
+// handlers in ExamScreen) or the memo breaks and the scroll freeze returns.
 const ExamFields = memo(function ExamFields({
   cats,
   lang,
   t,
+  rtl,
   micError,
+  editingId,
+  onEdit,
+  onSetField,
+  onClose,
 }: {
   cats: ExamCategory[];
   lang: Lang;
   t: Dict;
+  rtl: boolean;
   micError: string | null;
+  editingId: string | null;
+  onEdit: (id: string) => void;
+  onSetField: (idx: number, val: string) => void;
+  onClose: () => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
@@ -27,6 +40,7 @@ const ExamFields = memo(function ExamFields({
         const pending = c.status === 'pending';
         const low = c.low && done;
         const val = c.override != null ? c.override : locField(lang, c, 'sample');
+        const editing = editingId === 'e' + idx;
 
         const cardStyle: CSSProperties = {
           display: 'flex',
@@ -59,7 +73,28 @@ const ExamFields = memo(function ExamFields({
               <div style={{ fontSize: 15, fontWeight: 800, color: active ? color.examActiveText : color.ink }}>{locField(lang, c, 'name')}</div>
               <div style={badgeStyle}>{badge}</div>
             </div>
-            <div style={valueStyle}>{valueText}</div>
+            {editing ? (
+              <FieldEditor
+                type={c.type}
+                value={c.override != null ? c.override : ''}
+                options={c.options ?? null}
+                optionsHe={c.optionsHe ?? null}
+                rtl={rtl}
+                onChange={(v) => onSetField(idx, v)}
+                close={onClose}
+                cancelLabel={t.cancel}
+              />
+            ) : (
+              <div
+                onClick={() => onEdit('e' + idx)}
+                style={{ ...valueStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, cursor: 'pointer' }}
+              >
+                <span>{valueText}</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color.chevron3} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </div>
+            )}
             {low && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 9, background: color.warnBg }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color.warnText} strokeWidth="2.4" strokeLinecap="round">
@@ -76,10 +111,20 @@ const ExamFields = memo(function ExamFields({
 });
 
 export function ExamScreen() {
-  const { state, t, loc, tplByName, fmt, go, endExam, togglePause, onLiveTranscript } = useStethoscribe();
+  const { state, t, rtl, loc, tplByName, fmt, go, endExam, togglePause, onLiveTranscript, setExamField, update } = useStethoscribe();
   const exam = state.exam!;
   const examDone = state.activeIdx === -1;
   const transcriptElRef = useRef<HTMLDivElement>(null);
+
+  // ExamFields is memoized against the per-second timer re-render, so its
+  // callbacks must keep a stable identity across renders. useRef(fn).current
+  // pins the identity for the component's life while apiRef always points at
+  // the latest context methods.
+  const apiRef = useRef({ setExamField, update });
+  apiRef.current = { setExamField, update };
+  const onEdit = useRef((id: string) => apiRef.current.update({ editingId: id })).current;
+  const onClose = useRef(() => apiRef.current.update({ editingId: null })).current;
+  const onSetField = useRef((idx: number, v: string) => apiRef.current.setExamField(idx, v)).current;
 
   // Live "hearing…" text is written directly to the DOM here, bypassing React
   // state — it updates several times/sec while listening, and routing it
@@ -198,7 +243,9 @@ export function ExamScreen() {
                   ? t.voiceUnsupported
                   : state.micError === 'language-not-supported'
                     ? t.voiceLangUnavailable
-                    : t.micDenied}
+                    : state.micError === 'network'
+                      ? t.voiceNetworkError
+                      : t.micDenied}
               </div>
             ) : !state.voiceActive ? (
               <div style={{ fontSize: 13, fontWeight: 600, color: color.examHintText, opacity: 0.75 }}>{t.demoHint}</div>
@@ -223,7 +270,17 @@ export function ExamScreen() {
         </div>
 
         <div className="scr" style={{ flex: 1, minHeight: 0, overflow: 'auto', background: color.cream, borderRadius: '30px 30px 0 0', padding: '20px 18px 130px' }}>
-          <ExamFields cats={state.examCats || []} lang={state.lang} t={t} micError={state.micError} />
+          <ExamFields
+            cats={state.examCats || []}
+            lang={state.lang}
+            t={t}
+            rtl={rtl}
+            micError={state.micError}
+            editingId={state.editingId}
+            onEdit={onEdit}
+            onSetField={onSetField}
+            onClose={onClose}
+          />
         </div>
       </div>
       <div style={{ padding: '14px 22px calc(18px + env(safe-area-inset-bottom))', borderTop: `1px solid ${color.borderCream}`, background: color.cream }}>
