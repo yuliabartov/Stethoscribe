@@ -11,6 +11,7 @@ import {
   subscribeTemplates,
 } from '../data/firestoreStore';
 import { auth, googleProvider } from '../firebase';
+import { captureAccessToken, clearAccessToken, getAccessToken } from '../auth/googleToken';
 import { DICT, loc as locImpl } from '../i18n';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
 import { WebSpeechSource, ensureMicPermission, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
@@ -44,6 +45,8 @@ const initialState: AppState = {
   addOptions: '',
   exportFormats: { pdf: true, word: false },
   recipient: 'dr.amelia@northclinic.com',
+  sending: false,
+  sendError: null,
   sent: false,
   search: '',
   sort: 'recent',
@@ -273,7 +276,8 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
 
   const signIn = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const cred = await signInWithPopup(auth, googleProvider);
+      captureAccessToken(cred);
     } catch (err) {
       console.error('Google sign-in failed', err);
     }
@@ -281,6 +285,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      clearAccessToken();
       await firebaseSignOut(auth);
     } catch (err) {
       console.error('Sign-out failed', err);
@@ -726,24 +731,102 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     go('reports', { nav: 'reports' });
   };
 
-  const sendReport = () => {
+  const sendReport = async () => {
     const uid = state.user?.uid;
     const review = state.review;
-    if (!uid || !review) return;
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    saveReportDoc(uid, review.reportId, {
-      date,
-      time: hh + ':' + mm,
-      template: review.templateName,
-      name: review.name.trim() || null,
-      cats: review.cats,
-    })
-      .then((id) => setState((s) => s.review ? { ...s, review: { ...s.review, reportId: id } } : s))
-      .catch((err) => console.error('Save report failed', err));
-    update({ sent: true });
+    const user = state.user;
+    if (!uid || !review || !user?.email) return;
+    if (state.sending) return;
+
+    update({ sending: true, sendError: null });
+
+    try {
+      const { generateReportDocx, reportFilename } = await import('../docx/reportDocx');
+      const { sendReportEmail, GmailSendFailure } = await import('../mail/gmailSend');
+
+      const tpl = tplByName(review.templateName);
+      const templateDisplayName = locImpl(state.lang, tpl, 'name') || review.templateName;
+      const docxBlob = await generateReportDocx({ review, templateName: templateDisplayName, lang: state.lang });
+      const filename = reportFilename(templateDisplayName, review.name);
+      const subject = review.name?.trim() || templateDisplayName;
+      const body = DICT[state.lang].emailBody;
+
+      // Access token may be stale (1hr TTL) or missing entirely if the user
+      // signed in before this feature landed. Re-open signInWithPopup — Google
+      // remembers the account + scope grant, so it's usually just a flash.
+      let token = getAccessToken();
+      if (!token) {
+        const cred = await signInWithPopup(auth, googleProvider);
+        captureAccessToken(cred);
+        token = getAccessToken();
+      }
+      if (!token) throw new Error('No access token after sign-in');
+
+      try {
+        await sendReportEmail({
+          accessToken: token,
+          to: state.recipient,
+          from: user.email,
+          subject,
+          body,
+          docxBlob,
+          filename,
+        });
+      } catch (err) {
+        // On auth failure, drop the cached token and retry once with a fresh
+        // popup — this cleanly recovers from an expired-during-session token.
+        if (err instanceof GmailSendFailure && err.code === 'auth') {
+          clearAccessToken();
+          const cred = await signInWithPopup(auth, googleProvider);
+          captureAccessToken(cred);
+          const fresh = getAccessToken();
+          if (!fresh) throw err;
+          await sendReportEmail({
+            accessToken: fresh,
+            to: state.recipient,
+            from: user.email,
+            subject,
+            body,
+            docxBlob,
+            filename,
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      // Persist the report only after Gmail actually accepted it — otherwise
+      // a failed send would leave a "sent" row in the doctor's list.
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      saveReportDoc(uid, review.reportId, {
+        date,
+        time: hh + ':' + mm,
+        template: review.templateName,
+        name: review.name.trim() || null,
+        cats: review.cats,
+      })
+        .then((id) => setState((s) => s.review ? { ...s, review: { ...s.review, reportId: id } } : s))
+        .catch((err) => console.error('Save report failed', err));
+
+      update({ sending: false, sent: true });
+    } catch (err) {
+      // GmailSendFailure carries our own 'auth'|'network'|'unknown' code;
+      // FirebaseError from signInWithPopup uses codes like 'auth/popup-blocked',
+      // 'auth/popup-closed-by-user', 'auth/network-request-failed' — map those
+      // to the corresponding banner so the doctor sees a meaningful message
+      // rather than a generic "unknown" for a straightforward re-auth issue.
+      console.error('Send report failed', err);
+      const raw = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+      let code: 'auth' | 'network' | 'unknown';
+      if (raw === 'auth' || raw === 'network' || raw === 'unknown') code = raw;
+      else if (raw.startsWith('auth/network')) code = 'network';
+      else if (raw.startsWith('auth/')) code = 'auth';
+      else code = 'unknown';
+      update({ sending: false, sendError: code });
+    }
   };
 
   const delReport = (id: string) => {

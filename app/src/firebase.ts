@@ -23,11 +23,14 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// Google Sign-In with the doctor's personal account. Default scopes (email +
-// profile) only — the minimum needed for Phase 1. The Gmail send scope comes
-// later, with the email feature.
+// Google Sign-In with the doctor's personal account. Requests the Gmail send
+// scope so the export flow can attach the .docx report and send it directly
+// from the physician's own inbox — no server-side sender, no PHI leaving their
+// account. Existing users signed in before this change will see a one-time
+// "grant additional access" prompt from Google the next time they sign in.
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
 
 // Offline-first cache: keep data locally and sync when the network returns.
 // Multi-tab manager keeps several open tabs consistent. (Used heavily once

@@ -112,8 +112,19 @@ export function ExportScreen() {
       </div>
 
       <div style={{ padding: '14px 22px calc(18px + env(safe-area-inset-bottom))', borderTop: `1px solid ${color.borderCream}`, background: color.cream }}>
+        {state.sendError && (
+          <div style={{ marginBottom: 12, background: color.warnBg, borderRadius: 14, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color.warnText} strokeWidth="2.3" strokeLinecap="round" style={{ flexShrink: 0 }}>
+              <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+            </svg>
+            <span style={{ fontSize: 13, fontWeight: 700, color: color.warnTextDeep }}>
+              {state.sendError === 'auth' ? t.sendFailedAuth : state.sendError === 'network' ? t.sendFailedNetwork : t.sendFailedUnknown}
+            </span>
+          </div>
+        )}
         <button
-          onClick={sendReport}
+          onClick={() => { if (!state.sending) { update({ sendError: null }); sendReport(); } }}
+          disabled={state.sending}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -123,17 +134,30 @@ export function ExportScreen() {
             padding: 18,
             border: 'none',
             borderRadius: 18,
-            background: color.amber,
+            background: state.sending ? color.borderCream2 : color.amber,
             color: color.ink,
             fontSize: 17,
             fontWeight: 800,
-            boxShadow: '0 14px 26px -14px rgba(235,164,31,.8)',
+            boxShadow: state.sending ? 'none' : '0 14px 26px -14px rgba(235,164,31,.8)',
+            cursor: state.sending ? 'wait' : 'pointer',
+            opacity: state.sending ? 0.75 : 1,
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z" />
-          </svg>
-          {t.sendReport}
+          {state.sending ? (
+            <>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.5" strokeLinecap="round" style={{ animation: 'ssSpin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 1 1-6.2-8.55" />
+              </svg>
+              {t.sendingReport}
+            </>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z" />
+              </svg>
+              {state.sendError ? t.tryAgain : t.sendReport}
+            </>
+          )}
         </button>
       </div>
 

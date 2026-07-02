@@ -140,6 +140,10 @@ export interface AppState {
   addOptions: string;
   exportFormats: ExportFormats;
   recipient: string;
+  /** Gmail send in-flight — export screen shows "Sending…" and disables the button. */
+  sending: boolean;
+  /** Post-send failure code; null on success or before an attempt. */
+  sendError: 'auth' | 'network' | 'unknown' | null;
   sent: boolean;
   search: string;
   sort: 'recent' | 'oldest';

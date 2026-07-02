@@ -211,7 +211,7 @@ export function ReviewScreen() {
 
       <div style={{ padding: '14px 22px calc(16px + env(safe-area-inset-bottom))', borderTop: `1px solid ${color.borderCream}`, background: color.cream, display: 'flex', gap: 12 }}>
         <button
-          onClick={() => go('export', { sent: false })}
+          onClick={() => go('export', { sent: false, sending: false, sendError: null })}
           style={{
             flex: 1,
             display: 'flex',
