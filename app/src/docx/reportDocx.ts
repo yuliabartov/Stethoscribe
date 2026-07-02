@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun } from 'docx';
+import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
 import type { Lang, ReviewState } from '../types';
 import { loc } from '../i18n';
 
@@ -9,11 +9,16 @@ interface ReportDocxInput {
 }
 
 function rtlParagraph(runs: TextRun[], extra?: Record<string, unknown>): Paragraph {
+  // bidirectional -> <w:bidi/> gives the paragraph an RTL base direction.
+  // Alignment MUST be 'start' (leading edge), NOT 'right': in a bidi
+  // paragraph, <w:jc w:val="right"/> is interpreted logically as the END of
+  // the line, which for RTL is the physical LEFT edge — that's what pushed
+  // the text to the left. 'start' = the physical right edge for RTL.
   return new Paragraph({
     ...extra,
     children: runs,
     bidirectional: true,
-    alignment: 'right' as never,
+    alignment: AlignmentType.START,
   });
 }
 
