@@ -15,14 +15,19 @@ export class GmailSendFailure extends Error {
   }
 }
 
+export interface MailAttachment {
+  blob: Blob;
+  filename: string;
+  mimeType: string;
+}
+
 interface SendReportEmailInput {
   accessToken: string;
   to: string;
   from: string;
   subject: string;
   body: string;
-  docxBlob: Blob;
-  filename: string;
+  attachments: MailAttachment[];
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -47,9 +52,22 @@ function base64UrlEncode(str: string): string {
 }
 
 async function buildMimeMessage(input: SendReportEmailInput): Promise<string> {
-  const attachmentB64 = await blobToBase64(input.docxBlob);
   const boundary = 'sscribe_' + Math.random().toString(36).slice(2);
   const CRLF = '\r\n';
+
+  const attachmentParts: string[] = [];
+  for (const att of input.attachments) {
+    const b64 = await blobToBase64(att.blob);
+    attachmentParts.push(
+      `--${boundary}`,
+      `Content-Type: ${att.mimeType}`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${att.filename}"`,
+      '',
+      b64,
+      '',
+    );
+  }
 
   const lines = [
     `From: ${input.from}`,
@@ -64,18 +82,15 @@ async function buildMimeMessage(input: SendReportEmailInput): Promise<string> {
     '',
     btoa(unescape(encodeURIComponent(input.body))),
     '',
-    `--${boundary}`,
-    'Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'Content-Transfer-Encoding: base64',
-    `Content-Disposition: attachment; filename="${input.filename}"`,
-    '',
-    attachmentB64,
-    '',
+    ...attachmentParts,
     `--${boundary}--`,
     '',
   ];
   return lines.join(CRLF);
 }
+
+export const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+export const MIME_PDF = 'application/pdf';
 
 export async function sendReportEmail(input: SendReportEmailInput): Promise<void> {
   const raw = base64UrlEncode(await buildMimeMessage(input));

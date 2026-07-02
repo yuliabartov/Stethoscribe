@@ -123,8 +123,8 @@ export function ExportScreen() {
           </div>
         )}
         <button
-          onClick={() => { if (!state.sending) { update({ sendError: null }); sendReport(); } }}
-          disabled={state.sending}
+          onClick={() => { if (!state.sending && (ef.pdf || ef.word)) { update({ sendError: null }); sendReport(); } }}
+          disabled={state.sending || (!ef.pdf && !ef.word)}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -134,13 +134,13 @@ export function ExportScreen() {
             padding: 18,
             border: 'none',
             borderRadius: 18,
-            background: state.sending ? color.borderCream2 : color.amber,
+            background: state.sending || (!ef.pdf && !ef.word) ? color.borderCream2 : color.amber,
             color: color.ink,
             fontSize: 17,
             fontWeight: 800,
-            boxShadow: state.sending ? 'none' : '0 14px 26px -14px rgba(235,164,31,.8)',
-            cursor: state.sending ? 'wait' : 'pointer',
-            opacity: state.sending ? 0.75 : 1,
+            boxShadow: state.sending || (!ef.pdf && !ef.word) ? 'none' : '0 14px 26px -14px rgba(235,164,31,.8)',
+            cursor: state.sending ? 'wait' : (!ef.pdf && !ef.word) ? 'not-allowed' : 'pointer',
+            opacity: state.sending || (!ef.pdf && !ef.word) ? 0.6 : 1,
           }}
         >
           {state.sending ? (

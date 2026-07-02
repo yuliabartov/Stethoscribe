@@ -753,16 +753,37 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       const token = getAccessToken();
       if (!token) throw new Error('No access token after sign-in');
 
-      const { generateReportDocx, reportFilename } = await import('../docx/reportDocx');
-      const { sendReportEmail } = await import('../mail/gmailSend');
+      const { sendReportEmail, MIME_DOCX, MIME_PDF } = await import('../mail/gmailSend');
 
       const tpl = tplByName(review.templateName);
       const templateDisplayName = locImpl(state.lang, tpl, 'name') || review.templateName;
-      const docxBlob = await generateReportDocx({ review, templateName: templateDisplayName, lang: state.lang });
-      const filename = reportFilename(templateDisplayName, review.name);
       const reportDisplayName = review.name?.trim() || templateDisplayName;
       const subject = `Stethoscribe. ${reportDisplayName}`;
       const body = DICT[state.lang].emailBody;
+
+      // Generate each selected format in parallel; skip formats the doctor
+      // didn't tick so we don't waste CPU on the mobile device.
+      const wantWord = state.exportFormats.word;
+      const wantPdf = state.exportFormats.pdf;
+      if (!wantWord && !wantPdf) throw new Error('No format selected');
+
+      const attachments: import('../mail/gmailSend').MailAttachment[] = [];
+      const jobs: Promise<void>[] = [];
+      if (wantWord) {
+        jobs.push((async () => {
+          const { generateReportDocx, reportFilename } = await import('../docx/reportDocx');
+          const blob = await generateReportDocx({ review, templateName: templateDisplayName, lang: state.lang });
+          attachments.push({ blob, filename: reportFilename(templateDisplayName, review.name), mimeType: MIME_DOCX });
+        })());
+      }
+      if (wantPdf) {
+        jobs.push((async () => {
+          const { generateReportPdf, reportPdfFilename } = await import('../pdf/reportPdf');
+          const blob = await generateReportPdf({ review, templateName: templateDisplayName, lang: state.lang });
+          attachments.push({ blob, filename: reportPdfFilename(templateDisplayName, review.name), mimeType: MIME_PDF });
+        })());
+      }
+      await Promise.all(jobs);
 
       await sendReportEmail({
         accessToken: token,
@@ -770,8 +791,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         from: user.email,
         subject,
         body,
-        docxBlob,
-        filename,
+        attachments,
       });
 
       // Persist the report only after Gmail actually accepted it — otherwise
