@@ -16,41 +16,40 @@ interface ReportDocxInput {
   lang: Lang;
 }
 
-function renderField(name: string, content: string, rtl: boolean): Paragraph {
+function renderField(name: string, content: string): Paragraph {
   const text = content ? `${name} - ${content}` : `${name} -`;
   return new Paragraph({
-    children: [new TextRun({ text, font: rtl ? 'David' : 'Calibri', size: 22, rightToLeft: rtl })],
+    children: [new TextRun({ text, font: 'David', size: 22, rightToLeft: true })],
     spacing: { after: 120 },
-    bidirectional: rtl,
-    alignment: rtl ? AlignmentType.RIGHT : AlignmentType.LEFT,
+    bidirectional: true,
+    alignment: AlignmentType.RIGHT,
   });
 }
 
-function renderHeader(templateName: string, reportName: string, rtl: boolean): Paragraph[] {
+function renderHeader(templateName: string, reportName: string): Paragraph[] {
   const title = reportName?.trim() || templateName;
   return [
     new Paragraph({
-      children: [new TextRun({ text: title, bold: true, font: rtl ? 'David' : 'Calibri', size: 32, rightToLeft: rtl })],
+      children: [new TextRun({ text: title, bold: true, font: 'David', size: 32, rightToLeft: true })],
       spacing: { after: 200 },
-      bidirectional: rtl,
-      alignment: rtl ? AlignmentType.RIGHT : AlignmentType.LEFT,
+      bidirectional: true,
+      alignment: AlignmentType.RIGHT,
     }),
   ];
 }
 
 export async function generateReportDocx({ review, templateName, lang }: ReportDocxInput): Promise<Blob> {
-  const rtl = lang === 'he';
   const fieldParagraphs = review.cats.map((c) => {
     const name = loc(lang, c, 'name');
     const content = (c.override ?? '').trim();
-    return renderField(name, content, rtl);
+    return renderField(name, content);
   });
 
   const doc = new Document({
     sections: [
       {
         properties: {},
-        children: [...renderHeader(templateName, review.name, rtl), ...fieldParagraphs],
+        children: [...renderHeader(templateName, review.name), ...fieldParagraphs],
       },
     ],
   });

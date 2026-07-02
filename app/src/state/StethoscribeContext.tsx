@@ -43,7 +43,7 @@ const initialState: AppState = {
   addType: 'Free text',
   addName: '',
   addOptions: '',
-  exportFormats: { word: true },
+  exportFormats: { pdf: false, word: true },
   recipient: 'dr.amelia@northclinic.com',
   sending: false,
   sendError: null,

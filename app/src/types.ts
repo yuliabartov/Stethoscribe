@@ -99,6 +99,7 @@ export interface BuilderState {
 }
 
 export interface ExportFormats {
+  pdf: boolean;
   word: boolean;
 }
 
