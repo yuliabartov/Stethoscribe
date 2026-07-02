@@ -43,7 +43,7 @@ const initialState: AppState = {
   addType: 'Free text',
   addName: '',
   addOptions: '',
-  exportFormats: { pdf: true, word: false },
+  exportFormats: { word: true },
   recipient: 'dr.amelia@northclinic.com',
   sending: false,
   sendError: null,
@@ -748,7 +748,8 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       const templateDisplayName = locImpl(state.lang, tpl, 'name') || review.templateName;
       const docxBlob = await generateReportDocx({ review, templateName: templateDisplayName, lang: state.lang });
       const filename = reportFilename(templateDisplayName, review.name);
-      const subject = review.name?.trim() || templateDisplayName;
+      const reportDisplayName = review.name?.trim() || templateDisplayName;
+      const subject = `Stethoscribe. ${reportDisplayName}`;
       const body = DICT[state.lang].emailBody;
 
       // Access token may be stale (1hr TTL) or missing entirely if the user

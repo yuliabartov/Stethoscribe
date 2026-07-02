@@ -33,10 +33,7 @@ export function ExportScreen() {
     background: color.teal,
   });
 
-  const fmtNames: string[] = [];
-  if (ef.pdf) fmtNames.push('PDF');
-  if (ef.word) fmtNames.push('Word');
-  const formatSummary = fmtNames.length ? fmtNames.join(' + ') : t.noFormat;
+  const formatSummary = ef.word ? 'Word' : t.noFormat;
   const reviewCount = state.review ? state.review.cats.length : 0;
   const summaryText = `${reviewCount} ${t.fields} · ${t.today} · ${formatSummary}`;
   const deliveredText = `${formatSummary}${t.deliveredTo}`;
@@ -52,21 +49,6 @@ export function ExportScreen() {
       <div className="scr" style={{ flex: 1, overflow: 'auto', padding: '22px 22px 130px' }}>
         <h2 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 800, color: color.ink }}>{t.format}</h2>
         <div style={{ display: 'flex', gap: 13 }}>
-          <button onClick={() => update((s) => ({ exportFormats: { ...s.exportFormats, pdf: !s.exportFormats.pdf } }))} style={fmtSel(ef.pdf)}>
-            <span style={{ width: 46, height: 46, borderRadius: 14, background: color.pdfIconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color.pdfIconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <path d="M14 2v6h6" />
-              </svg>
-            </span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: color.ink }}>PDF</span>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: color.muted, marginTop: 2 }}>{t.printReady}</span>
-            <span style={check(ef.pdf)}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-            </span>
-          </button>
           <button onClick={() => update((s) => ({ exportFormats: { ...s.exportFormats, word: !s.exportFormats.word } }))} style={fmtSel(ef.word)}>
             <span style={{ width: 46, height: 46, borderRadius: 14, background: color.wordIconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color.wordIconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
