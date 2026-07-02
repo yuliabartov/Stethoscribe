@@ -80,6 +80,9 @@ async function buildMimeMessage(input: SendReportEmailInput): Promise<string> {
 export async function sendReportEmail(input: SendReportEmailInput): Promise<void> {
   const raw = base64UrlEncode(await buildMimeMessage(input));
 
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 30_000);
+
   let res: Response;
   try {
     res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -89,9 +92,13 @@ export async function sendReportEmail(input: SendReportEmailInput): Promise<void
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ raw }),
+      signal: abort.signal,
     });
   } catch (err) {
-    throw new GmailSendFailure('network', (err as Error).message || 'Network error');
+    const msg = (err as Error).name === 'AbortError' ? 'Request timed out' : ((err as Error).message || 'Network error');
+    throw new GmailSendFailure('network', msg);
+  } finally {
+    clearTimeout(timer);
   }
 
   if (res.ok) return;
