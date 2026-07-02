@@ -49,9 +49,7 @@ export async function generateReportDocx({ review, templateName, lang }: ReportD
   const doc = new Document({
     sections: [
       {
-        properties: {
-          bidi: rtl,
-        },
+        properties: {},
         children: [...renderHeader(templateName, review.name, rtl), ...fieldParagraphs],
       },
     ],
