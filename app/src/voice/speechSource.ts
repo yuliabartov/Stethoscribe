@@ -61,21 +61,60 @@ export function isMobileDevice(): boolean {
   return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
 }
 
-// Pre-request microphone access via getUserMedia. Browsers persist this grant
-// per origin, so the user only sees the permission prompt once — subsequent
+// Pre-request microphone access. Browsers persist this grant per origin, so
+// the user only sees the permission prompt once — subsequent
 // SpeechRecognition.start() calls reuse it silently. Call this early (e.g.
 // after sign-in) so the exam can start without an extra prompt.
+//
+// Layered checks (fast → slow) so we don't reopen the mic stream on every
+// reload — even a silent getUserMedia() call briefly opens the mic and can
+// flash the browser's recording indicator, which feels like a re-prompt:
+//   1. localStorage hint — set on first successful grant, wipe on 'denied'
+//   2. Permissions API — authoritative when 'microphone' is supported
+//   3. getUserMedia — last resort, actually opens the mic and prompts
+const MIC_GRANT_KEY = 'stethoscribe.mic-granted-v1';
 let micGranted = false;
+
+function readStoredGrant(): boolean {
+  try { return localStorage.getItem(MIC_GRANT_KEY) === '1'; } catch { return false; }
+}
+function writeStoredGrant(v: boolean): void {
+  try {
+    if (v) localStorage.setItem(MIC_GRANT_KEY, '1');
+    else localStorage.removeItem(MIC_GRANT_KEY);
+  } catch { /* private mode may throw */ }
+}
+
 export async function ensureMicPermission(): Promise<'granted' | 'denied' | 'unsupported'> {
   if (micGranted) return 'granted';
+  if (readStoredGrant()) { micGranted = true; return 'granted'; }
   if (!navigator.mediaDevices?.getUserMedia) return 'unsupported';
+
+  // Permissions API is the only way to check without opening the mic.
+  // Safari iOS 16+ supports 'microphone'; older Safari and some Firefox
+  // versions don't and will throw — fall through to getUserMedia in that case.
+  try {
+    const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+    if (status.state === 'granted') {
+      micGranted = true;
+      writeStoredGrant(true);
+      return 'granted';
+    }
+    if (status.state === 'denied') {
+      writeStoredGrant(false);
+      return 'denied';
+    }
+    // 'prompt' → fall through and actually request
+  } catch { /* Permissions API doesn't support 'microphone' here */ }
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Stop the stream immediately — we just needed the permission grant.
     stream.getTracks().forEach((t) => t.stop());
     micGranted = true;
+    writeStoredGrant(true);
     return 'granted';
   } catch {
+    writeStoredGrant(false);
     return 'denied';
   }
 }
