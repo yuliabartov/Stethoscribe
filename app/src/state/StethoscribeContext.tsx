@@ -755,9 +755,18 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       // Access token may be stale (1hr TTL) or missing entirely if the user
       // signed in before this feature landed. Re-open signInWithPopup — Google
       // remembers the account + scope grant, so it's usually just a flash.
+      const popupWithTimeout = (timeoutMs = 30_000) => {
+        return Promise.race([
+          signInWithPopup(auth, googleProvider),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Sign-in timed out')), timeoutMs),
+          ),
+        ]);
+      };
+
       let token = getAccessToken();
       if (!token) {
-        const cred = await signInWithPopup(auth, googleProvider);
+        const cred = await popupWithTimeout();
         captureAccessToken(cred);
         token = getAccessToken();
       }
@@ -774,11 +783,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
           filename,
         });
       } catch (err) {
-        // On auth failure, drop the cached token and retry once with a fresh
-        // popup — this cleanly recovers from an expired-during-session token.
         if (err instanceof GmailSendFailure && err.code === 'auth') {
           clearAccessToken();
-          const cred = await signInWithPopup(auth, googleProvider);
+          const cred = await popupWithTimeout();
           captureAccessToken(cred);
           const fresh = getAccessToken();
           if (!fresh) throw err;
