@@ -1,4 +1,4 @@
-import logoIcon from './assets/logo-icon.png';
+import { AppIcon } from './components/AppIcon';
 import { BottomNav } from './components/BottomNav';
 import { PhoneFrame } from './components/PhoneFrame';
 import { BuilderScreen } from './screens/BuilderScreen';
@@ -41,11 +41,7 @@ function AppShell() {
     return (
       <PhoneFrame>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img
-            src={logoIcon}
-            alt="Stethoscribe"
-            style={{ width: 64, height: 'auto', animation: 'ssPulse 1.4s ease-in-out infinite' }}
-          />
+          <AppIcon size={64} style={{ animation: 'ssPulse 1.4s ease-in-out infinite' }} />
         </div>
       </PhoneFrame>
     );

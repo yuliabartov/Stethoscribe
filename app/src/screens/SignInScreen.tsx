@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import logoIcon from '../assets/logo-icon.png';
+import { AppIcon } from '../components/AppIcon';
 import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
@@ -23,7 +23,7 @@ export function SignInScreen() {
         <LangToggle />
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        <img src={logoIcon} alt="Stethoscribe" style={{ width: 90, height: 'auto' }} />
+        <AppIcon size={90} />
         <h1 style={{ margin: '18px 0 0', fontSize: 34, fontWeight: 800, letterSpacing: '-.5px' }}>
           <span style={{ color: color.teal }}>Stetho</span>
           <span style={{ color: color.ink }}>scribe</span>

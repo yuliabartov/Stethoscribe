@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import logoIcon from '../assets/logo-icon.png';
+import { AppIcon } from '../components/AppIcon';
 import { LangToggle } from '../components/LangToggle';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
@@ -17,7 +17,7 @@ export function HomeScreen() {
     <>
       <div style={{ padding: '24px 22px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-          <img src={logoIcon} alt="Stethoscribe" style={{ height: 28, width: 'auto', flexShrink: 0 }} />
+          <AppIcon size={28} style={{ flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, color: color.muted, fontWeight: 600 }}>{t.today}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: color.ink, letterSpacing: '-.3px' }}>
