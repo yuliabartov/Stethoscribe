@@ -61,60 +61,39 @@ export function isMobileDevice(): boolean {
   return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
 }
 
-// Pre-request microphone access. Browsers persist this grant per origin, so
-// the user only sees the permission prompt once — subsequent
-// SpeechRecognition.start() calls reuse it silently. Call this early (e.g.
-// after sign-in) so the exam can start without an extra prompt.
+// Pre-request microphone access. Call this early (e.g. after sign-in) so the
+// exam can start without an extra prompt, and again from any code path that's
+// about to open a live mic stream — the first check is silent (Permissions
+// API), only a real 'prompt' state falls through to getUserMedia.
 //
-// Layered checks (fast → slow) so we don't reopen the mic stream on every
-// reload — even a silent getUserMedia() call briefly opens the mic and can
-// flash the browser's recording indicator, which feels like a re-prompt:
-//   1. localStorage hint — set on first successful grant, wipe on 'denied'
-//   2. Permissions API — authoritative when 'microphone' is supported
-//   3. getUserMedia — last resort, actually opens the mic and prompts
-const MIC_GRANT_KEY = 'stethoscribe.mic-granted-v1';
+// Persistence is a browser policy: Chrome/Firefox persist per-origin grants
+// across reloads by default; iOS Safari may not. Nothing we do from JS forces
+// the browser to remember — a "granted" hint in localStorage would only
+// mislead our code into skipping getUserMedia while the browser silently
+// re-prompts SpeechRecognition later. So we deliberately DON'T cache grants
+// beyond the in-memory session flag.
 let micGranted = false;
-
-function readStoredGrant(): boolean {
-  try { return localStorage.getItem(MIC_GRANT_KEY) === '1'; } catch { return false; }
-}
-function writeStoredGrant(v: boolean): void {
-  try {
-    if (v) localStorage.setItem(MIC_GRANT_KEY, '1');
-    else localStorage.removeItem(MIC_GRANT_KEY);
-  } catch { /* private mode may throw */ }
-}
 
 export async function ensureMicPermission(): Promise<'granted' | 'denied' | 'unsupported'> {
   if (micGranted) return 'granted';
-  if (readStoredGrant()) { micGranted = true; return 'granted'; }
   if (!navigator.mediaDevices?.getUserMedia) return 'unsupported';
 
-  // Permissions API is the only way to check without opening the mic.
-  // Safari iOS 16+ supports 'microphone'; older Safari and some Firefox
-  // versions don't and will throw — fall through to getUserMedia in that case.
+  // Silent check first — if the browser already has the grant persisted, this
+  // returns 'granted' without opening the mic stream (which would briefly
+  // flash the recording indicator on iOS).
   try {
     const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-    if (status.state === 'granted') {
-      micGranted = true;
-      writeStoredGrant(true);
-      return 'granted';
-    }
-    if (status.state === 'denied') {
-      writeStoredGrant(false);
-      return 'denied';
-    }
+    if (status.state === 'granted') { micGranted = true; return 'granted'; }
+    if (status.state === 'denied') return 'denied';
     // 'prompt' → fall through and actually request
-  } catch { /* Permissions API doesn't support 'microphone' here */ }
+  } catch { /* Permissions API may not support 'microphone' (Safari <16) */ }
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((t) => t.stop());
     micGranted = true;
-    writeStoredGrant(true);
     return 'granted';
   } catch {
-    writeStoredGrant(false);
     return 'denied';
   }
 }

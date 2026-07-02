@@ -14,7 +14,7 @@ import { auth, googleProvider } from '../firebase';
 import { captureAccessToken, clearAccessToken, getAccessToken, isTokenFresh } from '../auth/googleToken';
 import { DICT, loc as locImpl } from '../i18n';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
-import { WebSpeechSource, ensureMicPermission, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
+import { WebSpeechSource, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
 import type { AppState, AuthUser, BuilderCategory, CategoryDef, CategoryType, ExamCatStatus, ExamCategory, NavName, ReportItem, ReviewCategory, ScreenName, TemplateDef } from '../types';
 
 const initialState: AppState = {
@@ -222,7 +222,12 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
           screen: s.screen === 'signin' ? 'home' : s.screen,
           recipient: user.email || s.recipient,
         }));
-        if (isMobileDevice()) ensureMicPermission();
+        // Deliberately NOT pre-requesting the mic here. iOS Safari treats
+        // getUserMedia and SpeechRecognition as separate audio sessions —
+        // pre-requesting on sign-in prompts once, then SpeechRecognition.start()
+        // prompts AGAIN when the doctor hits Start Exam. Better to let
+        // SpeechRecognition.start() handle its own grant inside the user's
+        // click gesture — one prompt total, and only when voice is invoked.
       } else {
         clearTimers();
         setState((s) => ({
