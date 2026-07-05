@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useStethoscribe } from '../state/StethoscribeContext';
 
 const outer: CSSProperties = {
-  minHeight: '100vh',
+  minHeight: '100dvh',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

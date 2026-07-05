@@ -271,6 +271,20 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         seedDefaultTemplates(uid).catch((err) => console.error('Seeding templates failed', err));
         return;
       }
+      // One-time cleanup of legacy default templates (cardio, derm, peds) for
+      // existing accounts that were seeded before we trimmed the defaults.
+      const cleanupKey = `cleanup-legacy-defaults-v1-${uid}`;
+      if (!localStorage.getItem(cleanupKey)) {
+        const legacyIds = ['cardio', 'derm', 'peds'];
+        const toDelete = templates.filter((t) => legacyIds.includes(t.id));
+        if (toDelete.length > 0) {
+          Promise.all(toDelete.map((t) => deleteTemplateDoc(uid, t.id)))
+            .then(() => localStorage.setItem(cleanupKey, '1'))
+            .catch((err) => console.error('Legacy template cleanup failed', err));
+        } else {
+          localStorage.setItem(cleanupKey, '1');
+        }
+      }
       setState((s) => ({ ...s, templates, dataReady: true }));
     });
     const unsubReports = subscribeReports(uid, (reports) => {
