@@ -6,21 +6,5 @@ interface AppIconProps {
 }
 
 export function AppIcon({ size, style }: AppIconProps) {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: Math.round(size * 0.235),
-        background: '#F6F1EB',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        ...style,
-      }}
-    >
-      <img src={logoIcon} alt="Stethoscribe" style={{ width: '60%', height: 'auto' }} />
-    </div>
-  );
+  return <img src={logoIcon} alt="Stethoscribe" style={{ width: size, height: 'auto', ...style }} />;
 }
