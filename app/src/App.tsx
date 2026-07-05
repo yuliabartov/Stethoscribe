@@ -1,5 +1,6 @@
 import { AppIcon } from './components/AppIcon';
 import { BottomNav } from './components/BottomNav';
+import { LandingPage } from './components/LandingPage';
 import { PhoneFrame } from './components/PhoneFrame';
 import { BuilderScreen } from './screens/BuilderScreen';
 import { ExamScreen } from './screens/ExamScreen';
@@ -45,6 +46,11 @@ function AppShell() {
         </div>
       </PhoneFrame>
     );
+  }
+  // Signed out: the public landing page is the app's entry point (full-width,
+  // responsive) — the phone-framed app is only for the signed-in experience.
+  if (!state.user) {
+    return <LandingPage />;
   }
   const showNav = state.screen === 'home' || state.screen === 'templates' || state.screen === 'reports';
   return (
