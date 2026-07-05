@@ -40,6 +40,29 @@ button {
   overscroll-behavior: contain;
 }
 
+/* PhoneFrame: fixed "phone mockup" size on wide screens, fills viewport on phones/tablets. */
+.phone-frame {
+  position: relative;
+  width: min(440px, 100vw);
+  height: min(940px, 100dvh);
+  background: #FBF8F2;
+  overflow: hidden;
+  border-radius: 38px;
+  box-shadow:
+    0 40px 90px -30px rgba(23, 58, 75, 0.45),
+    0 0 0 1px rgba(23, 58, 75, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+@media (max-width: 700px) {
+  .phone-frame {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
 @keyframes ssPulse {
   0% {
     transform: scale(0.75);
