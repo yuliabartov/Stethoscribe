@@ -3,6 +3,7 @@
 // support comes from the persistentLocalCache configured in firebase.ts; this
 // module just defines the document shapes and read/write/subscribe calls.
 import {
+  clearIndexedDbPersistence,
   collection,
   deleteDoc,
   doc,
@@ -12,6 +13,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  terminate,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -164,4 +166,12 @@ export async function getReportCats(uid: string, id: string): Promise<ReviewCate
   const snap = await getDoc(reportDoc(uid, id));
   if (!snap.exists()) return null;
   return (snap.data().cats as ReviewCategory[]) || [];
+}
+
+/** Sign-out hygiene: terminates Firestore and wipes its IndexedDB cache so
+ * report content doesn't linger for the next person on a shared machine.
+ * A terminated instance can't be reused — the caller must reload the page. */
+export async function purgeOfflineCache(): Promise<void> {
+  await terminate(db);
+  await clearIndexedDbPersistence(db);
 }

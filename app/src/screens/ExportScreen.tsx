@@ -1,11 +1,31 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { BackButton } from '../components/BackButton';
+import { isValidEmail } from '../mail/emailAddress';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function ExportScreen() {
   const { state, t, loc, tplByName, go, update, sendReport } = useStethoscribe();
   const ef = state.exportFormats;
+  const [confirmSend, setConfirmSend] = useState(false);
+
+  const recipient = state.recipient.trim();
+  const isSelf = !!state.user?.email && recipient.toLowerCase() === state.user.email.toLowerCase();
+  const handleSendClick = () => {
+    if (state.sending || (!ef.pdf && !ef.word)) return;
+    if (!isValidEmail(recipient)) {
+      update({ sendError: 'recipient' });
+      return;
+    }
+    // Sending anywhere other than the doctor's own inbox is an explicit,
+    // confirmed action (spec §11) — and the last catch for a mistyped address.
+    if (!isSelf) {
+      setConfirmSend(true);
+      return;
+    }
+    update({ sendError: null });
+    sendReport();
+  };
 
   const fmtSel = (on: boolean): CSSProperties => ({
     position: 'relative',
@@ -92,7 +112,8 @@ export function ExportScreen() {
           </svg>
           <input
             value={state.recipient}
-            onChange={(e) => update({ recipient: e.target.value })}
+            onChange={(e) => update((s) => ({ recipient: e.target.value, sendError: s.sendError === 'recipient' ? null : s.sendError }))}
+            placeholder={t.recipientPlaceholder}
             dir="ltr"
             style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 15.5, fontWeight: 600, color: color.ink, outline: 'none', padding: '10px 0', textAlign: 'start' }}
           />
@@ -118,12 +139,18 @@ export function ExportScreen() {
               <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
             </svg>
             <span style={{ fontSize: 13, fontWeight: 700, color: color.warnTextDeep }}>
-              {state.sendError === 'auth' ? t.sendFailedAuth : state.sendError === 'network' ? t.sendFailedNetwork : t.sendFailedUnknown}
+              {state.sendError === 'auth'
+                ? t.sendFailedAuth
+                : state.sendError === 'network'
+                  ? t.sendFailedNetwork
+                  : state.sendError === 'recipient'
+                    ? t.sendFailedRecipient
+                    : t.sendFailedUnknown}
             </span>
           </div>
         )}
         <button
-          onClick={() => { if (!state.sending && (ef.pdf || ef.word)) { update({ sendError: null }); sendReport(); } }}
+          onClick={handleSendClick}
           disabled={state.sending || (!ef.pdf && !ef.word)}
           style={{
             display: 'flex',
@@ -160,6 +187,30 @@ export function ExportScreen() {
           )}
         </button>
       </div>
+
+      {confirmSend && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,46,60,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 30, zIndex: 30 }}>
+          <div style={{ background: '#fff', borderRadius: 28, padding: '32px 28px', textAlign: 'center', width: '100%', maxWidth: 320, boxShadow: '0 30px 60px -20px rgba(0,0,0,.4)', animation: 'ssFade .25s ease' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: color.ink, lineHeight: 1.4 }}>{t.confirmExternalTitle}</div>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: color.inkSoft, marginTop: 10, lineHeight: 1.5 }}>{t.confirmExternalText}</div>
+            <div dir="ltr" style={{ fontSize: 15.5, fontWeight: 800, color: color.ink, marginTop: 8, overflowWrap: 'anywhere' }}>{recipient}</div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 26 }}>
+              <button
+                onClick={() => setConfirmSend(false)}
+                style={{ flex: 1, padding: 15, border: `1.5px solid ${color.borderCream3}`, borderRadius: 15, background: '#fff', color: color.ink, fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                {t.cancel}
+              </button>
+              <button
+                onClick={() => { setConfirmSend(false); update({ sendError: null }); sendReport(); }}
+                style={{ flex: 1, padding: 15, border: 'none', borderRadius: 15, background: color.ink, color: '#fff', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                {t.sendBtn}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {state.sent && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,46,60,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 30, zIndex: 30 }}>

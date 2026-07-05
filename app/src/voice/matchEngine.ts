@@ -33,6 +33,9 @@ export interface CapturedField {
   value: string;
   /** True when recognition confidence is low — flagged for review. */
   low: boolean;
+  /** Token index in the processed transcript where this capture's anchor
+   * begins — lets callers drop captures older than a manual edit. */
+  start: number;
 }
 
 export interface ProcessResult {
@@ -273,7 +276,7 @@ function findHits(norm: string[], cats: CompiledCategory[]): AnchorHit[] {
   return hits;
 }
 
-function captureValue(rawOriginal: string, cat: CompiledCategory, anchorScore: number): CapturedField | null {
+function captureValue(rawOriginal: string, cat: CompiledCategory, anchorScore: number): Omit<CapturedField, 'start'> | null {
   const raw = rawOriginal.trim();
   if (!raw) return { id: cat.id, value: '', low: true };
 
@@ -355,7 +358,7 @@ export function processTranscript(fullText: string, cats: CompiledCategory[]): P
     // field is left as-is rather than overwritten with an invalid value.
     if (!captured) continue;
     // Last mention wins, so a doctor can simply re-state a field to correct it.
-    fields.set(cat.id, captured);
+    fields.set(cat.id, { ...captured, start: hit.start });
   }
 
   return { fields: [...fields.values()], unassigned: unassigned.filter(Boolean), stop };

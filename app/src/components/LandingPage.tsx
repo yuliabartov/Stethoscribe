@@ -9,7 +9,7 @@ import { LangToggle } from './LangToggle';
 // app's existing stack: inline styles + theme.ts colors + DICT i18n, so Hebrew
 // (RTL) / English (LTR) swap purely off state.lang like every other screen.
 
-const CONTACT_EMAIL = 'contact@stethoscribe.com';
+const CONTACT_EMAIL = 'yuliabartov@gmail.com';
 
 // Official multi-color Google "G" — the standard mark for an OAuth button.
 function GoogleG({ size = 20 }: { size?: number }) {
@@ -163,11 +163,7 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer style={{ ...container, paddingTop: 8, paddingBottom: 28, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderTop: `1px solid ${color.borderCream3}`, marginTop: 'auto' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, color: color.inkSoft }}>
-          <span style={{ color: color.teal }}>Stetho</span>
-          <span style={{ marginInlineStart: -6, color: color.ink }}>scribe</span>
-        </span>
+      <footer style={{ ...container, paddingTop: 8, paddingBottom: 28, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 10, borderTop: `1px solid ${color.borderCream3}`, marginTop: 'auto' }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: color.muted }}>© {new Date().getFullYear()} Stethoscribe · {t.landRights}</span>
       </footer>
     </div>

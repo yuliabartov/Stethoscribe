@@ -4,6 +4,7 @@ import {
   deleteReportDoc,
   deleteTemplateDoc,
   getReportCats,
+  purgeOfflineCache,
   saveReportDoc,
   saveTemplateDoc,
   seedDefaultTemplates,
@@ -13,8 +14,10 @@ import {
 import { auth, googleProvider } from '../firebase';
 import { captureAccessToken, clearAccessToken, getAccessToken, isTokenFresh } from '../auth/googleToken';
 import { DICT, loc as locImpl } from '../i18n';
+import { isValidEmail } from '../mail/emailAddress';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
 import { WebSpeechSource, ensureMicPermission, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
+import { keepScreenAwake, releaseScreenWakeLock } from '../voice/wakeLock';
 import type { AppState, AuthUser, BuilderCategory, CategoryDef, CategoryType, ExamCatStatus, ExamCategory, NavName, ReportItem, ReviewCategory, ScreenName, TemplateDef } from '../types';
 
 const initialState: AppState = {
@@ -44,7 +47,9 @@ const initialState: AppState = {
   addName: '',
   addOptions: '',
   exportFormats: { pdf: false, word: true },
-  recipient: 'dr.amelia@northclinic.com',
+  // Filled with the doctor's own address on sign-in; empty (not a fake sample
+  // address) until then so a mis-send to a made-up recipient can't happen.
+  recipient: '',
   sending: false,
   sendError: null,
   sent: false,
@@ -70,6 +75,11 @@ function compileCats(cats: CategoryDef[]): CompiledCategory[] {
     }
     return { id: String(i), type: c.type, anchors, options };
   });
+}
+
+/** Token count matching processTranscript's whitespace segmentation. */
+function countTokens(s: string): number {
+  return s.split(/\s+/).filter(Boolean).length;
 }
 
 function applyCapture(cats: ExamCategory[], fields: CapturedField[]): { cats: ExamCategory[]; activeIdx: number } {
@@ -157,6 +167,14 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   const compiledRef = useRef<CompiledCategory[]>([]);
   const lastFinalRef = useRef('');
   const lastUiAtRef = useRef(0);
+  // Fields the doctor fixed (or cleared) by hand while voice was capturing,
+  // mapped to the finalized-transcript token count at the moment of the edit.
+  // The whole transcript is re-segmented on every speech result, so without
+  // this a manual fix would be overwritten by re-applying an older utterance.
+  // Only anchors heard *after* the edit (capture.start >= mark) may write to
+  // the field again — deliberate re-dictation wins, stale re-parses don't.
+  const examEditMarksRef = useRef(new Map<number, number>()); // exam field index → token mark
+  const reviewEditMarksRef = useRef(new Map<string, number>()); // review cat id → token mark
   const transcriptListenersRef = useRef(new Set<(text: string) => void>());
   // Report-editor dictation: its own speech source + compiled review categories,
   // and the last finalized transcript. Uses the exact same capture pipeline as
@@ -207,6 +225,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       dictationRef.current = null;
     }
     lastDictationFinalRef.current = '';
+    releaseScreenWakeLock();
   };
 
   useEffect(() => () => clearTimers(), []);
@@ -313,7 +332,20 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       await firebaseSignOut(auth);
     } catch (err) {
       console.error('Sign-out failed', err);
+      return;
     }
+    // Shared-machine hygiene: the persistent cache keeps report content in
+    // IndexedDB after sign-out, readable by the next person at the device.
+    // clearIndexedDbPersistence requires a terminated Firestore instance, and
+    // a terminated instance can't be restarted — reload to boot clean (the
+    // signed-out app lands on the public landing page anyway).
+    try {
+      await purgeOfflineCache();
+    } catch (err) {
+      // e.g. another signed-in tab still holds the IndexedDB lease.
+      console.error('Offline cache purge failed', err);
+    }
+    window.location.reload();
   };
 
   const update = (patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => {
@@ -409,6 +441,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     }
     lastFinalRef.current = '';
     lastUiAtRef.current = 0;
+    // New recognizer session ⇒ fresh empty transcript, so old marks (token
+    // offsets into the previous transcript) are meaningless — and safe to
+    // drop: the stale utterances they guarded against are gone with it.
+    examEditMarksRef.current.clear();
     const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
     const source = new WebSpeechSource(lang);
     speechRef.current = source;
@@ -431,9 +467,15 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         const result = processTranscript(finalText, compiledRef.current);
         setState((s) => {
           if (!s.examCats || s.screen !== 'exam') return s;
-          // Don't let voice clobber the field the doctor is manually editing.
+          // Don't let voice clobber the field the doctor is manually editing,
+          // nor re-apply utterances older than a manual fix (examEditMarksRef).
           const editingIdx = s.editingId?.startsWith('e') ? Number(s.editingId.slice(1)) : -1;
-          const fields = editingIdx >= 0 ? result.fields.filter((f) => Number(f.id) !== editingIdx) : result.fields;
+          const fields = result.fields.filter((f) => {
+            const idx = Number(f.id);
+            if (idx === editingIdx) return false;
+            const mark = examEditMarksRef.current.get(idx);
+            return mark === undefined || f.start >= mark;
+          });
           const applied = applyCapture(s.examCats, fields);
           return { ...s, examCats: applied.cats, activeIdx: applied.activeIdx };
         });
@@ -476,6 +518,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       micError: onPhone && !canVoice ? 'unsupported' : null,
       voiceActive: canVoice,
     });
+    // The doctor may not touch the device for minutes — a sleeping screen
+    // suspends SpeechRecognition and silently kills the hands-free exam.
+    keepScreenAwake();
     notifyTranscript('');
     clockRef.current = setInterval(() => setState((s) => (s.paused ? s : { ...s, elapsed: s.elapsed + 1 })), 1000);
     if (canVoice) {
@@ -522,9 +567,15 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     }
     lastDictationFinalRef.current = '';
     lastDictationUiAtRef.current = 0;
+    // Fresh dictation session ⇒ fresh transcript; old marks are stale (see
+    // the matching reset in startVoice).
+    reviewEditMarksRef.current.clear();
     // Same compile step the exam uses, but over the report's own categories, so
     // spoken section names route findings to the matching fields.
     compiledReviewRef.current = compileCats(state.review.cats);
+    // Cat ids by compiled index — captured fields carry the index, marks are
+    // keyed by id. Stable for the whole session (review order never changes).
+    const reviewIds = state.review.cats.map((c) => c.id);
     const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
     const source = new WebSpeechSource(lang);
     dictationRef.current = source;
@@ -546,7 +597,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         // text until the finalized commit below replaces it with the real value.
         const previewText = (finalText + (interim ? ' ' + interim : '')).trim();
         if (previewText) {
-          notifyPartialFields(processTranscript(previewText, compiledReviewRef.current).fields);
+          // Same manual-fix guard as the commit below, so the ghost preview
+          // never advertises a value the commit would then refuse to apply.
+          const preview = processTranscript(previewText, compiledReviewRef.current).fields.filter((f) => {
+            const mark = reviewEditMarksRef.current.get(reviewIds[Number(f.id)]);
+            return mark === undefined || f.start >= mark;
+          });
+          notifyPartialFields(preview);
         }
 
         if (!finalChanged) return;
@@ -560,6 +617,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
           for (const f of result.fields) {
             const idx = Number(f.id);
             if (idx === editingIdx || !cats[idx]) continue;
+            // Skip utterances older than a manual fix (see examEditMarksRef).
+            const mark = reviewEditMarksRef.current.get(cats[idx].id);
+            if (mark !== undefined && f.start < mark) continue;
             cats[idx] = { ...cats[idx], override: f.value, low: f.low };
           }
           return { ...s, review: { ...s.review, cats } };
@@ -571,11 +631,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       onError: (code) => {
         dictationRef.current = null;
         notifyPartialFields([]);
+        releaseScreenWakeLock();
         update({ dictationError: code, dictating: false });
       },
       onEnd: () => {},
     });
     notifyTranscript('');
+    keepScreenAwake();
     update({ dictating: true, dictationError: null });
   };
 
@@ -585,6 +647,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     dictationRef.current = null;
     notifyTranscript('');
     notifyPartialFields([]);
+    releaseScreenWakeLock();
     update({ dictating: false });
   };
 
@@ -610,6 +673,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   };
 
   const setField = (id: string, val: string) => {
+    // Hand-edited — only speech spoken from this point on may write to this
+    // field again (see reviewEditMarksRef). Outside a dictation session the
+    // transcript is empty, so the mark is 0 and blocks nothing.
+    reviewEditMarksRef.current.set(id, countTokens(lastDictationFinalRef.current));
     setState((s) => ({
       ...s,
       review: s.review
@@ -623,6 +690,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   // filled field reads as "done" and the active marker moves to the next
   // still-empty one — clearing a field sends it back to pending/active.
   const setExamField = (idx: number, val: string) => {
+    // Hand-fixed (or hand-cleared) — only speech spoken from this point on may
+    // write to this field again (see examEditMarksRef).
+    examEditMarksRef.current.set(idx, countTokens(lastFinalRef.current));
     setState((s) => {
       if (!s.examCats || !s.examCats[idx]) return s;
       const cats = s.examCats.map((c) => ({ ...c }));
@@ -787,6 +857,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     const user = state.user;
     if (!uid || !review || !user?.email) return;
     if (state.sending) return;
+    // Validated in the export screen too, but the sender is the last line of
+    // defense — this also keeps CRLF out of gmailSend's hand-built MIME headers.
+    const to = state.recipient.trim();
+    if (!isValidEmail(to)) {
+      update({ sendError: 'recipient' });
+      return;
+    }
 
     update({ sending: true, sendError: null });
 
@@ -837,7 +914,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
 
       await sendReportEmail({
         accessToken: token,
-        to: state.recipient,
+        to,
         from: user.email,
         subject,
         body,

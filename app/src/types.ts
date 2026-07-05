@@ -143,7 +143,7 @@ export interface AppState {
   /** Gmail send in-flight — export screen shows "Sending…" and disables the button. */
   sending: boolean;
   /** Post-send failure code; null on success or before an attempt. */
-  sendError: 'auth' | 'network' | 'unknown' | null;
+  sendError: 'auth' | 'network' | 'recipient' | 'unknown' | null;
   sent: boolean;
   search: string;
   sort: 'recent' | 'oldest';
