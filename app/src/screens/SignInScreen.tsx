@@ -23,7 +23,7 @@ export function SignInScreen() {
         <LangToggle />
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        <AppIcon size={90} />
+        <AppIcon size={180} />
         <h1 style={{ margin: '18px 0 0', fontSize: 34, fontWeight: 800, letterSpacing: '-.5px' }}>
           <span style={{ color: color.teal }}>Stetho</span>
           <span style={{ color: color.ink }}>scribe</span>

@@ -41,7 +41,7 @@ function AppShell() {
     return (
       <PhoneFrame>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <AppIcon size={64} style={{ animation: 'ssPulse 1.4s ease-in-out infinite' }} />
+          <AppIcon size={128} style={{ animation: 'ssPulse 1.4s ease-in-out infinite' }} />
         </div>
       </PhoneFrame>
     );
