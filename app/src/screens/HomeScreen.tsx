@@ -7,6 +7,7 @@ import { color } from '../theme';
 export function HomeScreen() {
   const { state, t, loc, rtl, go, update, signOut, startExam, reviewFromReport, accentFor, tplByName } = useStethoscribe();
   const [avatarError, setAvatarError] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   const sel = state.templates.find((tp) => tp.id === state.selectedTemplateId) || state.templates[0];
   const firstName = state.user?.displayName?.split(' ')[0] || t.clinician;
@@ -29,7 +30,7 @@ export function HomeScreen() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <LangToggle />
           <button
-            onClick={signOut}
+            onClick={() => setShowSignOutConfirm(true)}
             title={t.signOut}
             aria-label={t.signOut}
             style={{
@@ -222,6 +223,27 @@ export function HomeScreen() {
           ))}
         </div>
       </div>
+      {showSignOutConfirm && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,46,60,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 30, zIndex: 30 }}>
+          <div style={{ background: '#fff', borderRadius: 28, padding: '32px 28px', textAlign: 'center', width: '100%', maxWidth: 320, boxShadow: '0 30px 60px -20px rgba(0,0,0,.4)', animation: 'ssFade .25s ease' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: color.ink, lineHeight: 1.4 }}>{t.confirmSignOut}</div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 26 }}>
+              <button
+                onClick={() => setShowSignOutConfirm(false)}
+                style={{ flex: 1, padding: 15, border: `1.5px solid ${color.borderCream3}`, borderRadius: 15, background: '#fff', color: color.ink, fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                {t.no}
+              </button>
+              <button
+                onClick={() => { setShowSignOutConfirm(false); signOut(); }}
+                style={{ flex: 1, padding: 15, border: 'none', borderRadius: 15, background: color.ink, color: '#fff', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                {t.yes}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
