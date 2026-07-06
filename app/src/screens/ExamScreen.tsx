@@ -117,6 +117,9 @@ export function ExamScreen() {
   const exam = state.exam!;
   const examTpl = tplForReport(exam.templateId, exam.templateName);
   const examDone = state.activeIdx === -1;
+  // Any surfaced mic error means listening has stopped (transient no-speech
+  // noise is filtered out before reaching state).
+  const micDead = !!state.micError;
   const transcriptElRef = useRef<HTMLDivElement>(null);
 
   // ExamFields is memoized against the per-second timer re-render, so its
@@ -163,9 +166,11 @@ export function ExamScreen() {
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{state.lang === 'he' ? 'עברית' : 'English'}</span>
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: state.paused ? 'rgba(255,255,255,.12)' : color.examLiveBg, padding: '8px 13px', borderRadius: 999 }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: state.paused ? color.chevron3 : color.tealBright, animation: state.paused ? 'none' : 'ssBlink 1.1s infinite' }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: state.paused ? '#fff' : color.tealPale }}>{state.paused ? t.paused : t.live}</span>
+            {/* A dead mic must not keep blinking "Live" — the chip is the one
+                place the doctor glances at to confirm listening is on. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: state.paused || micDead ? 'rgba(255,255,255,.12)' : color.examLiveBg, padding: '8px 13px', borderRadius: 999 }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: micDead ? color.warnText : state.paused ? color.chevron3 : color.tealBright, animation: state.paused || micDead ? 'none' : 'ssBlink 1.1s infinite' }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: state.paused || micDead ? '#fff' : color.tealPale }}>{micDead ? t.micOff : state.paused ? t.paused : t.live}</span>
             </div>
           </div>
         </div>
@@ -244,11 +249,15 @@ export function ExamScreen() {
               <div style={{ fontSize: 12, fontWeight: 600, color: color.tealPale, opacity: 0.9, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                 {state.micError === 'unsupported'
                   ? t.voiceUnsupported
-                  : state.micError === 'language-not-supported'
-                    ? t.voiceLangUnavailable
-                    : state.micError === 'network'
-                      ? t.voiceNetworkError
-                      : t.micDenied}
+                  : state.micError === 'standalone'
+                    ? t.voiceStandalone
+                    : state.micError === 'restart-failed'
+                      ? t.voiceStalled
+                      : state.micError === 'language-not-supported'
+                        ? t.voiceLangUnavailable
+                        : state.micError === 'network'
+                          ? t.voiceNetworkError
+                          : t.micDenied}
               </div>
             ) : !state.voiceActive ? (
               <div style={{ fontSize: 13, fontWeight: 600, color: color.examHintText, opacity: 0.75 }}>{t.demoHint}</div>

@@ -61,6 +61,18 @@ export function isMobileDevice(): boolean {
   return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
 }
 
+/** iOS home-screen web app ("Add to Home Screen"). On iOS, SpeechRecognition
+ * only works in Safari proper — in standalone mode the constructor exists but
+ * sessions yield nothing (the spec explicitly rejects PWA mode for the exam,
+ * §14). Detect it so the app says so instead of appearing to listen. */
+export function isIOSStandalone(): boolean {
+  const ua = navigator.userAgent || '';
+  const iOS = /iPad|iPhone|iPod/.test(ua) || (/Mac/.test(ua) && navigator.maxTouchPoints > 1);
+  if (!iOS) return false;
+  const nav = navigator as { standalone?: boolean };
+  return nav.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+}
+
 // Pre-request microphone access. Call this early (e.g. after sign-in) so the
 // exam can start without an extra prompt, and again from any code path that's
 // about to open a live mic stream — the first check is silent (Permissions
@@ -98,24 +110,103 @@ export async function ensureMicPermission(): Promise<'granted' | 'denied' | 'uns
   }
 }
 
+// Continuous-session management (spec §16 "continuous-session handling").
+//
+// iOS Safari ends recognition sessions every ~30-60s and after silences.
+// Restarting the SAME recognizer instance synchronously from its own onend —
+// what this class used to do — intermittently throws on Safari, or "succeeds"
+// into a dead session that never fires onresult again. The old code swallowed
+// that (`catch { ignore }`), so listening died silently mid-exam: frozen
+// "hearing…" text, fields no longer filling, "Live" still blinking. So now:
+//
+//  - every (re)start uses a FRESH SpeechRecognition instance,
+//  - restarts are deferred a beat and retried with backoff, not fired
+//    synchronously inside onend,
+//  - sessions that die instantly after starting count against a retry
+//    budget; when it's exhausted we surface 'restart-failed' instead of
+//    pretending to listen,
+//  - a watchdog recycles a "zombie" session that has produced no events at
+//    all for too long (a healthy one fires results / no-speech / end within
+//    seconds; recycling during real silence is harmless — the accumulated
+//    transcript lives on this object, not on the instance).
+const RESTART_DELAY_MS = 250;
+const MAX_RESTART_ATTEMPTS = 8;
+const QUICK_DEATH_MS = 1_000;
+const WATCHDOG_INTERVAL_MS = 5_000;
+const STALE_SESSION_MS = 15_000;
+
 export class WebSpeechSource {
   private rec: SpeechRec | null = null;
   private finalText = '';
   private active = false;
   private lang: string;
+  private handlers: SpeechHandlers | null = null;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  private restartAttempts = 0;
+  private sessionStartedAt = 0;
+  private lastEventAt = 0;
 
   constructor(lang: string) {
     this.lang = lang;
   }
 
   start(handlers: SpeechHandlers): void {
-    const Ctor = getSRCtor();
-    if (!Ctor) {
+    if (!getSRCtor()) {
       handlers.onError('unsupported');
       return;
     }
+    this.handlers = handlers;
     this.finalText = '';
     this.active = true;
+    this.restartAttempts = 0;
+    this.lastEventAt = Date.now();
+    this.spawn();
+    this.watchdog = setInterval(() => {
+      if (!this.active) return;
+      if (Date.now() - this.lastEventAt > STALE_SESSION_MS) {
+        this.lastEventAt = Date.now();
+        this.recycle();
+      }
+    }, WATCHDOG_INTERVAL_MS);
+  }
+
+  /** Tear down the current instance without firing its handlers, then start a
+   * fresh one. Used by the restart path and the zombie watchdog. */
+  private recycle(): void {
+    if (this.rec) {
+      this.rec.onresult = null;
+      this.rec.onerror = null;
+      this.rec.onend = null;
+      try {
+        this.rec.abort();
+      } catch {
+        /* already gone */
+      }
+      this.rec = null;
+    }
+    this.spawn();
+  }
+
+  private scheduleRestart(): void {
+    if (!this.active || this.restartTimer) return;
+    this.restartAttempts++;
+    if (this.restartAttempts > MAX_RESTART_ATTEMPTS) {
+      // Recovery genuinely failed — say so rather than dying silently.
+      this.active = false;
+      this.handlers?.onError('restart-failed');
+      return;
+    }
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      if (this.active) this.recycle();
+    }, RESTART_DELAY_MS * this.restartAttempts);
+  }
+
+  private spawn(): void {
+    const Ctor = getSRCtor();
+    const handlers = this.handlers;
+    if (!Ctor || !handlers || !this.active) return;
 
     const rec = new Ctor();
     rec.lang = this.lang;
@@ -124,6 +215,8 @@ export class WebSpeechSource {
     rec.maxAlternatives = 1;
 
     rec.onresult = (e) => {
+      this.lastEventAt = Date.now();
+      this.restartAttempts = 0; // producing results ⇒ the session is healthy
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -136,6 +229,7 @@ export class WebSpeechSource {
     };
 
     rec.onerror = (e) => {
+      this.lastEventAt = Date.now();
       // These are normal in continuous use (silence, our own stop) — don't surface.
       if (e.error === 'no-speech' || e.error === 'aborted') return;
       // Fatal errors (Hebrew not supported by this browser, permission denied,
@@ -154,30 +248,41 @@ export class WebSpeechSource {
       handlers.onError(e.error);
     };
 
-    // iOS/Safari ends sessions frequently; restart while still active to keep
-    // the exam hands-free. (Spec §16, continuous-session handling.)
     rec.onend = () => {
-      if (this.active) {
-        try {
-          rec.start();
-        } catch {
-          /* a restart can race; ignore */
-        }
-      } else {
+      this.lastEventAt = Date.now();
+      if (this.rec === rec) this.rec = null;
+      if (!this.active) {
         handlers.onEnd();
+        return;
       }
+      // A session that lived a while ended normally (silence / engine
+      // rotation) — that shouldn't eat into the retry budget. Only instant
+      // deaths count, so a start-fail loop still exhausts and surfaces.
+      if (Date.now() - this.sessionStartedAt >= QUICK_DEATH_MS) this.restartAttempts = 0;
+      this.scheduleRestart();
     };
 
     this.rec = rec;
+    this.sessionStartedAt = Date.now();
     try {
       rec.start();
     } catch {
-      handlers.onError('start-failed');
+      // Start can race the previous session's teardown — retry, don't die.
+      this.rec = null;
+      this.scheduleRestart();
     }
   }
 
   stop(): void {
     this.active = false;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    if (this.watchdog) {
+      clearInterval(this.watchdog);
+      this.watchdog = null;
+    }
     try {
       this.rec?.stop();
     } catch {

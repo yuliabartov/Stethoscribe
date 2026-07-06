@@ -18,7 +18,7 @@ import { DICT, loc as locImpl } from '../i18n';
 import { isValidEmail } from '../mail/emailAddress';
 import { FATAL_MIC_ERRORS, playCaptureFeedback, playFailureFeedback, primeAudioFeedback } from '../voice/feedback';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
-import { WebSpeechSource, ensureMicPermission, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
+import { WebSpeechSource, ensureMicPermission, isIOSStandalone, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
 import { keepScreenAwake, releaseScreenWakeLock } from '../voice/wakeLock';
 import type { AppState, AuthUser, BuilderCategory, CategoryDef, CategoryType, ExamCatStatus, ExamCategory, NavName, ReportItem, ReviewCategory, ScreenName, TemplateDef } from '../types';
 
@@ -655,8 +655,11 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     lastCaptureValuesRef.current.clear();
     // Voice exam is phone-only (spec §9). On a phone we do real voice (or show a
     // clear "unsupported browser" message); desktop keeps the simulated demo.
+    // iOS home-screen apps expose the recognizer but it never produces results
+    // — treat as unsupported with a message pointing at Safari (spec §14).
     const onPhone = isMobileDevice();
-    const canVoice = onPhone && isSpeechSupported();
+    const standalone = isIOSStandalone();
+    const canVoice = onPhone && isSpeechSupported() && !standalone;
     update({
       screen: 'exam',
       exam: { templateName: t.name, templateId: t.id },
@@ -665,7 +668,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       elapsed: 0,
       paused: false,
       editingId: null,
-      micError: onPhone && !canVoice ? 'unsupported' : null,
+      micError: onPhone && !canVoice ? (standalone ? 'standalone' : 'unsupported') : null,
       voiceActive: canVoice,
     });
     // The doctor may not touch the device for minutes — a sleeping screen
@@ -687,15 +690,21 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     const nextPaused = !state.paused;
     if (state.voiceActive) {
       if (nextPaused) speechRef.current?.stop();
+      // Resume starts a fresh source — this is also the doctor's recovery
+      // path from a stalled mic ('restart-failed'), so clear the error.
       else startVoice();
     }
     if (nextPaused) notifyTranscript('');
-    update({ paused: nextPaused });
+    update({ paused: nextPaused, micError: !nextPaused && state.voiceActive ? null : state.micError });
   };
 
   const startDictation = async () => {
     if (state.dictating) return;
     if (!state.review) return;
+    if (isIOSStandalone()) {
+      update({ dictationError: 'standalone' });
+      return;
+    }
     if (!isSpeechSupported()) {
       update({ dictationError: 'unsupported' });
       return;

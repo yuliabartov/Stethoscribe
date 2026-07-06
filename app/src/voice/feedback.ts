@@ -81,5 +81,7 @@ export const FATAL_MIC_ERRORS = new Set([
   'audio-capture',
   'network',
   'start-failed',
+  'restart-failed',
+  'standalone',
   'unsupported',
 ]);

@@ -65,11 +65,15 @@ export function ReviewScreen() {
   const dictationErrorText =
     state.dictationError === 'unsupported'
       ? t.voiceUnsupported
-      : state.dictationError === 'language-not-supported'
-        ? t.voiceLangUnavailable
-        : state.dictationError === 'network'
-          ? t.voiceNetworkError
-          : t.micDenied;
+      : state.dictationError === 'standalone'
+        ? t.voiceStandalone
+        : state.dictationError === 'restart-failed'
+          ? t.voiceStalled
+          : state.dictationError === 'language-not-supported'
+            ? t.voiceLangUnavailable
+            : state.dictationError === 'network'
+              ? t.voiceNetworkError
+              : t.micDenied;
 
   return (
     <>
