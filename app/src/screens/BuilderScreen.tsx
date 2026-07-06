@@ -90,6 +90,14 @@ export function BuilderScreen() {
                   {hasOptions && (
                     <span style={{ fontSize: 12, fontWeight: 600, color: color.muted, marginInlineStart: 8 }}>{locOptions(c).join(' · ')}</span>
                   )}
+                  {c.type === 'Number' && (c.unit || c.min != null || c.max != null) && (
+                    <span style={{ fontSize: 12, fontWeight: 600, color: color.muted, marginInlineStart: 8 }} dir="ltr">
+                      {[c.unit, c.min != null || c.max != null ? `${c.min ?? '·'}–${c.max ?? '·'}` : null].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                  {!!c.aliases?.length && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: color.muted, marginTop: 4 }}>≈ {c.aliases.join(' · ')}</div>
+                  )}
                 </div>
                 <button
                   onClick={() => delCat(c.id)}
@@ -118,6 +126,23 @@ export function BuilderScreen() {
                 borderRadius: 13,
                 background: '#fff',
                 fontSize: 15,
+                fontWeight: 600,
+                color: color.ink,
+                outline: 'none',
+                marginBottom: 12,
+              }}
+            />
+            <input
+              value={state.addAliases}
+              onChange={(e) => update({ addAliases: e.target.value })}
+              placeholder={t.aliasesPlaceholder}
+              style={{
+                width: '100%',
+                padding: '13px 14px',
+                border: `1.5px solid ${color.borderMint}`,
+                borderRadius: 13,
+                background: '#fff',
+                fontSize: 14,
                 fontWeight: 600,
                 color: color.ink,
                 outline: 'none',
@@ -167,9 +192,33 @@ export function BuilderScreen() {
                 }}
               />
             )}
+            {state.addType === 'Number' && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input
+                  value={state.addUnit}
+                  onChange={(e) => update({ addUnit: e.target.value })}
+                  placeholder={t.unitPlaceholder}
+                  style={{ flex: 2, minWidth: 0, padding: '13px 14px', border: `1.5px solid ${color.borderMint}`, borderRadius: 13, background: '#fff', fontSize: 14, fontWeight: 600, color: color.ink, outline: 'none' }}
+                />
+                <input
+                  value={state.addMin}
+                  onChange={(e) => update({ addMin: e.target.value })}
+                  placeholder={t.minPlaceholder}
+                  inputMode="decimal"
+                  style={{ flex: 1, minWidth: 0, padding: '13px 14px', border: `1.5px solid ${color.borderMint}`, borderRadius: 13, background: '#fff', fontSize: 14, fontWeight: 600, color: color.ink, outline: 'none' }}
+                />
+                <input
+                  value={state.addMax}
+                  onChange={(e) => update({ addMax: e.target.value })}
+                  placeholder={t.maxPlaceholder}
+                  inputMode="decimal"
+                  style={{ flex: 1, minWidth: 0, padding: '13px 14px', border: `1.5px solid ${color.borderMint}`, borderRadius: 13, background: '#fff', fontSize: 14, fontWeight: 600, color: color.ink, outline: 'none' }}
+                />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10 }}>
               <button
-                onClick={() => update({ adding: false, addName: '', addOptions: '', addType: 'Free text' })}
+                onClick={() => update({ adding: false, addName: '', addOptions: '', addAliases: '', addUnit: '', addMin: '', addMax: '', addType: 'Free text' })}
                 style={{ flex: 1, padding: 13, border: `1.5px solid ${color.borderMint}`, background: '#fff', borderRadius: 13, fontSize: 14.5, fontWeight: 700, color: color.inkSoft }}
               >
                 {t.cancel}

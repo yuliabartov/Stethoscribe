@@ -26,6 +26,9 @@ export interface CompiledCategory {
   /** Normalized spoken anchors: category name + Hebrew name + aliases. */
   anchors: string[];
   options?: CompiledOption[];
+  /** Number fields: valid range — captures outside it are flagged for review. */
+  min?: number | null;
+  max?: number | null;
 }
 
 export interface CapturedField {
@@ -286,7 +289,13 @@ function captureValue(rawOriginal: string, cat: CompiledCategory, anchorScore: n
     // A Number field only ever holds digits — if nothing parseable was heard,
     // leave the field untouched rather than writing non-numeric text into it.
     const parsed = parseSpokenNumber(raw);
-    return parsed ? { id: cat.id, value: parsed, low: anchorScore < ANCHOR_LOW } : null;
+    if (!parsed) return null;
+    // Outside the template's valid range (spec §6.4) — keep the value (the
+    // doctor may really mean it) but flag it for review like any other
+    // uncertain capture.
+    const num = Number(parsed);
+    const outOfRange = (cat.min != null && num < cat.min) || (cat.max != null && num > cat.max);
+    return { id: cat.id, value: parsed, low: outOfRange || anchorScore < ANCHOR_LOW };
   }
 
   if (cat.type === 'List' && cat.options?.length) {

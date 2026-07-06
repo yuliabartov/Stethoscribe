@@ -3,11 +3,19 @@ import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function ReportsScreen() {
-  const { state, t, rtl, loc, tplByName, accentFor, update, reviewFromReport, delReport } = useStethoscribe();
+  const { state, t, rtl, loc, tplForReport, update, reviewFromReport, delReport } = useStethoscribe();
 
   const handleDelete = (id: string) => {
     if (window.confirm(t.confirmDeleteReport)) delReport(id);
   };
+
+  // Reports resolve their template by stable id; deleted templates fall back
+  // to the name snapshot on the report and a neutral accent.
+  const reportTplName = (r: (typeof state.reports)[number]) => {
+    const tpl = tplForReport(r.templateId, r.template);
+    return tpl ? loc(tpl, 'name') : r.template;
+  };
+  const reportAccent = (r: (typeof state.reports)[number]) => tplForReport(r.templateId, r.template)?.accent ?? color.muted;
 
   const sortStyle = (on: boolean): CSSProperties => ({
     padding: '9px 16px',
@@ -24,7 +32,7 @@ export function ReportsScreen() {
   const q = state.search.trim().toLowerCase();
   if (q) {
     list = list.filter((r) =>
-      (loc(tplByName(r.template), 'name') + ' ' + r.template + ' ' + (r.name || '') + ' ' + r.date + ' ' + r.time)
+      (reportTplName(r) + ' ' + r.template + ' ' + (r.name || '') + ' ' + r.date + ' ' + r.time)
         .toLowerCase()
         .includes(q),
     );
@@ -85,11 +93,11 @@ export function ReportsScreen() {
                 onClick={() => reviewFromReport(r)}
                 style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, border: 'none', background: 'transparent', textAlign: 'start', padding: 0 }}
               >
-                <span style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, background: accentFor(r.template) }} />
+                <span style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, background: reportAccent(r) }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: color.ink }}>{r.name || loc(tplByName(r.template), 'name')}</span>
+                  <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: color.ink }}>{r.name || reportTplName(r)}</span>
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.muted, marginTop: 2 }}>
-                    {r.name ? `${loc(tplByName(r.template), 'name')} · ` : ''}{r.date} · {r.time}
+                    {r.name ? `${reportTplName(r)} · ` : ''}{r.date} · {r.time}
                   </span>
                 </span>
                 <svg

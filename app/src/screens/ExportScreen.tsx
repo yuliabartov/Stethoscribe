@@ -5,14 +5,16 @@ import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function ExportScreen() {
-  const { state, t, loc, tplByName, go, update, sendReport } = useStethoscribe();
+  const { state, t, loc, tplForReport, go, update, sendReport, downloadReport } = useStethoscribe();
   const ef = state.exportFormats;
   const [confirmSend, setConfirmSend] = useState(false);
+  const noFormat = !ef.pdf && !ef.word;
+  const busy = state.sending || state.downloading;
 
   const recipient = state.recipient.trim();
   const isSelf = !!state.user?.email && recipient.toLowerCase() === state.user.email.toLowerCase();
   const handleSendClick = () => {
-    if (state.sending || (!ef.pdf && !ef.word)) return;
+    if (busy || noFormat) return;
     if (!isValidEmail(recipient)) {
       update({ sendError: 'recipient' });
       return;
@@ -60,7 +62,8 @@ export function ExportScreen() {
   const reviewCount = state.review ? state.review.cats.length : 0;
   const summaryText = `${reviewCount} ${t.fields} · ${t.today} · ${formatSummary}`;
   const deliveredText = `${formatSummary}${t.deliveredTo}`;
-  const reviewTemplateName = state.review ? loc(tplByName(state.review.templateName), 'name') : '';
+  const reviewTpl = state.review ? tplForReport(state.review.templateId, state.review.templateName) : undefined;
+  const reviewTemplateName = reviewTpl ? loc(reviewTpl, 'name') : state.review?.templateName ?? '';
 
   return (
     <>
@@ -145,47 +148,82 @@ export function ExportScreen() {
                   ? t.sendFailedNetwork
                   : state.sendError === 'recipient'
                     ? t.sendFailedRecipient
-                    : t.sendFailedUnknown}
+                    : state.sendError === 'download'
+                      ? t.downloadFailed
+                      : t.sendFailedUnknown}
             </span>
           </div>
         )}
-        <button
-          onClick={handleSendClick}
-          disabled={state.sending || (!ef.pdf && !ef.word)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            width: '100%',
-            padding: 18,
-            border: 'none',
-            borderRadius: 18,
-            background: state.sending || (!ef.pdf && !ef.word) ? color.borderCream2 : color.amber,
-            color: color.ink,
-            fontSize: 17,
-            fontWeight: 800,
-            boxShadow: state.sending || (!ef.pdf && !ef.word) ? 'none' : '0 14px 26px -14px rgba(235,164,31,.8)',
-            cursor: state.sending ? 'wait' : (!ef.pdf && !ef.word) ? 'not-allowed' : 'pointer',
-            opacity: state.sending || (!ef.pdf && !ef.word) ? 0.6 : 1,
-          }}
-        >
-          {state.sending ? (
-            <>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={() => { if (!busy && !noFormat) downloadReport(); }}
+            disabled={busy || noFormat}
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 9,
+              padding: 18,
+              border: `1.5px solid ${busy || noFormat ? color.borderCream2 : color.ink}`,
+              borderRadius: 18,
+              background: '#fff',
+              color: color.ink,
+              fontSize: 16,
+              fontWeight: 800,
+              cursor: state.downloading ? 'wait' : noFormat ? 'not-allowed' : 'pointer',
+              opacity: busy || noFormat ? 0.6 : 1,
+            }}
+          >
+            {state.downloading ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.5" strokeLinecap="round" style={{ animation: 'ssSpin 1s linear infinite' }}>
                 <path d="M21 12a9 9 0 1 1-6.2-8.55" />
               </svg>
-              {t.sendingReport}
-            </>
-          ) : (
-            <>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z" />
+            ) : (
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
               </svg>
-              {state.sendError ? t.tryAgain : t.sendReport}
-            </>
-          )}
-        </button>
+            )}
+            {t.downloadBtn}
+          </button>
+          <button
+            onClick={handleSendClick}
+            disabled={busy || noFormat}
+            style={{
+              flex: 1.35,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              padding: 18,
+              border: 'none',
+              borderRadius: 18,
+              background: busy || noFormat ? color.borderCream2 : color.amber,
+              color: color.ink,
+              fontSize: 17,
+              fontWeight: 800,
+              boxShadow: busy || noFormat ? 'none' : '0 14px 26px -14px rgba(235,164,31,.8)',
+              cursor: state.sending ? 'wait' : noFormat ? 'not-allowed' : 'pointer',
+              opacity: busy || noFormat ? 0.6 : 1,
+            }}
+          >
+            {state.sending ? (
+              <>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.5" strokeLinecap="round" style={{ animation: 'ssSpin 1s linear infinite' }}>
+                  <path d="M21 12a9 9 0 1 1-6.2-8.55" />
+                </svg>
+                {t.sendingReport}
+              </>
+            ) : (
+              <>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color.ink} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z" />
+                </svg>
+                {state.sendError ? t.tryAgain : t.sendReport}
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {confirmSend && (

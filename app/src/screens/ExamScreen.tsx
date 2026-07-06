@@ -39,7 +39,9 @@ const ExamFields = memo(function ExamFields({
         const done = c.status === 'done';
         const pending = c.status === 'pending';
         const low = c.low && done;
-        const val = c.override != null ? c.override : locField(lang, c, 'sample');
+        const raw = c.override != null ? c.override : locField(lang, c, 'sample');
+        // Captured numbers show their template unit; samples already embed one.
+        const val = c.override && c.type === 'Number' && c.unit ? `${raw} ${c.unit}` : raw;
         const editing = editingId === 'e' + idx;
 
         const cardStyle: CSSProperties = {
@@ -111,8 +113,9 @@ const ExamFields = memo(function ExamFields({
 });
 
 export function ExamScreen() {
-  const { state, t, rtl, loc, tplByName, fmt, go, endExam, togglePause, onLiveTranscript, setExamField, update } = useStethoscribe();
+  const { state, t, rtl, loc, tplForReport, fmt, go, endExam, togglePause, onLiveTranscript, setExamField, update } = useStethoscribe();
   const exam = state.exam!;
+  const examTpl = tplForReport(exam.templateId, exam.templateName);
   const examDone = state.activeIdx === -1;
   const transcriptElRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +150,7 @@ export function ExamScreen() {
               <div style={{ fontSize: 13, fontWeight: 700, color: color.examRecordingLabel, letterSpacing: '.3px', textTransform: 'uppercase' }}>
                 {state.paused ? t.paused : t.recording} · {fmt(state.elapsed)}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginTop: 2 }}>{loc(tplByName(exam.templateName), 'name')}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginTop: 2 }}>{examTpl ? loc(examTpl, 'name') : exam.templateName}</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>

@@ -1,12 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BackButton } from '../components/BackButton';
 import { FieldEditor } from '../components/FieldEditor';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function ReviewScreen() {
-  const { state, t, rtl, loc, tplByName, go, update, setField, setReportName, saveReport, toggleDictation, onLiveTranscript, onPartialFields } = useStethoscribe();
+  const { state, t, rtl, loc, tplForReport, go, update, setField, setReportName, saveReport, toggleDictation, onLiveTranscript, onPartialFields, assignUnassigned, dismissUnassigned } = useStethoscribe();
   const review = state.review!;
+  // Which unassigned segment has its "add to section" picker open.
+  const [assigningIdx, setAssigningIdx] = useState<number | null>(null);
   const liveRef = useRef<HTMLSpanElement>(null);
   // Ghost-text spans per field (keyed by array index, matching how dictation
   // fields are addressed) — updated directly via DOM writes, bypassing React
@@ -45,8 +47,8 @@ export function ReviewScreen() {
   const lowBannerText = rtl
     ? `${lowCount} שדות דורשים בדיקה מהירה — הקש לעריכה`
     : `${lowCount} fields need a quick check — tap to edit`;
-  const reviewTemplate = tplByName(review.templateName);
-  const reviewTemplateName = loc(reviewTemplate, 'name');
+  const reviewTemplate = tplForReport(review.templateId, review.templateName);
+  const reviewTemplateName = reviewTemplate ? loc(reviewTemplate, 'name') : review.templateName;
   const backScreen = state.nav === 'reports' ? 'reports' : 'home';
   const dictationErrorText =
     state.dictationError === 'unsupported'
@@ -135,6 +137,53 @@ export function ReviewScreen() {
       )}
 
       <div className="scr" style={{ flex: 1, overflow: 'auto', padding: '16px 22px 120px' }}>
+        {review.unassigned.length > 0 && (
+          <div style={{ marginBottom: 14, background: color.warnBgSoft, border: `1.5px solid ${color.warnBorder}`, borderRadius: 18, padding: '14px 16px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: color.warnTextDeep, letterSpacing: '.3px', textTransform: 'uppercase' }}>{t.unassignedTitle}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: color.inkSoft, marginTop: 5, lineHeight: 1.45 }}>{t.unassignedHint}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {review.unassigned.map((seg, i) => (
+                <div key={`${i}-${seg}`} style={{ background: '#fff', border: `1px solid ${color.warnBorder}`, borderRadius: 13, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span
+                      onClick={() => setAssigningIdx(assigningIdx === i ? null : i)}
+                      style={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: color.ink, lineHeight: 1.4, cursor: 'pointer' }}
+                    >
+                      {seg}
+                    </span>
+                    <button
+                      onClick={() => { dismissUnassigned(i); setAssigningIdx(null); }}
+                      aria-label={t.dismiss}
+                      style={{ width: 28, height: 28, border: 'none', background: color.delBg, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color.warnText} strokeWidth="2.6" strokeLinecap="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  {assigningIdx === i && (
+                    <div style={{ marginTop: 9 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: color.inkMute, marginBottom: 6 }}>{t.assignTo}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                        {/* Free-text fields only — pasting raw speech into a
+                            Number/List field would break its type constraints. */}
+                        {review.cats.filter((c) => c.type === 'Free text').map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => { assignUnassigned(i, c.id); setAssigningIdx(null); }}
+                            style={{ padding: '7px 12px', border: `1.5px solid ${color.borderCream3}`, borderRadius: 10, background: '#fff', fontSize: 13, fontWeight: 700, color: color.ink }}
+                          >
+                            {loc(c, 'name')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {review.cats.map((c, idx) => {
             const editing = state.editingId === c.id;
@@ -180,7 +229,9 @@ export function ReviewScreen() {
                       cursor: 'pointer',
                     }}
                   >
-                    <span style={!value ? { color: color.muted, fontStyle: 'italic' } : undefined}>{value || t.emptyField}</span>
+                    <span style={!value ? { color: color.muted, fontStyle: 'italic' } : undefined}>
+                      {value ? (c.type === 'Number' && c.unit ? `${value} ${c.unit}` : value) : t.emptyField}
+                    </span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color.chevron2} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                       <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
                     </svg>

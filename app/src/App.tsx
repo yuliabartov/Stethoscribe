@@ -2,6 +2,7 @@ import { AppIcon } from './components/AppIcon';
 import { BottomNav } from './components/BottomNav';
 import { LandingPage } from './components/LandingPage';
 import { PhoneFrame } from './components/PhoneFrame';
+import { PrivacyPage } from './components/PrivacyPage';
 import { BuilderScreen } from './screens/BuilderScreen';
 import { ExamScreen } from './screens/ExamScreen';
 import { ExportScreen } from './screens/ExportScreen';
@@ -38,6 +39,12 @@ function Screen() {
 
 function AppShell() {
   const { state } = useStethoscribe();
+  // Public privacy policy at a stable URL (hosting rewrites all paths to
+  // index.html) — rendered before the auth gate so it loads instantly and is
+  // reachable by Google's OAuth verification reviewers without signing in.
+  if (window.location.pathname === '/privacy') {
+    return <PrivacyPage />;
+  }
   if (!state.authReady || (state.user && !state.dataReady)) {
     return (
       <PhoneFrame>

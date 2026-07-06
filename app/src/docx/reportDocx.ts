@@ -43,7 +43,9 @@ function renderHeader(templateName: string, reportName: string): Paragraph[] {
 export async function generateReportDocx({ review, templateName, lang }: ReportDocxInput): Promise<Blob> {
   const fieldParagraphs = review.cats.map((c) => {
     const name = loc(lang, c, 'name');
-    const content = (c.override ?? '').trim();
+    let content = (c.override ?? '').trim();
+    // Captured numbers render with their template unit label (spec §6.4).
+    if (content && c.type === 'Number' && c.unit) content = `${content} ${c.unit}`;
     return renderField(name, content);
   });
 

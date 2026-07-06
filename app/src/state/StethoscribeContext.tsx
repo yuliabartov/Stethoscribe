@@ -3,7 +3,7 @@ import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 
 import {
   deleteReportDoc,
   deleteTemplateDoc,
-  getReportCats,
+  getReportDetail,
   purgeOfflineCache,
   saveReportDoc,
   saveTemplateDoc,
@@ -13,8 +13,10 @@ import {
 } from '../data/firestoreStore';
 import { auth, googleProvider } from '../firebase';
 import { captureAccessToken, clearAccessToken, getAccessToken, isTokenFresh } from '../auth/googleToken';
+import { buildReportAttachments } from '../export/reportAttachments';
 import { DICT, loc as locImpl } from '../i18n';
 import { isValidEmail } from '../mail/emailAddress';
+import { FATAL_MIC_ERRORS, playCaptureFeedback, playFailureFeedback, primeAudioFeedback } from '../voice/feedback';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
 import { WebSpeechSource, ensureMicPermission, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
 import { keepScreenAwake, releaseScreenWakeLock } from '../voice/wakeLock';
@@ -46,6 +48,10 @@ const initialState: AppState = {
   addType: 'Free text',
   addName: '',
   addOptions: '',
+  addAliases: '',
+  addUnit: '',
+  addMin: '',
+  addMax: '',
   exportFormats: { pdf: false, word: true },
   // Filled with the doctor's own address on sign-in; empty (not a fake sample
   // address) until then so a mis-send to a made-up recipient can't happen.
@@ -53,13 +59,14 @@ const initialState: AppState = {
   sending: false,
   sendError: null,
   sent: false,
+  downloading: false,
   search: '',
   sort: 'recent',
 };
 
 function compileCats(cats: CategoryDef[]): CompiledCategory[] {
   return cats.map((c, i) => {
-    const anchors = [c.name, c.nameHe]
+    const anchors = [c.name, c.nameHe, ...(c.aliases ?? [])]
       .filter((v): v is string => !!v)
       .map((v) => normalize(v))
       .filter(Boolean);
@@ -73,7 +80,7 @@ function compileCats(cats: CategoryDef[]): CompiledCategory[] {
         return { value: opt, terms };
       });
     }
-    return { id: String(i), type: c.type, anchors, options };
+    return { id: String(i), type: c.type, anchors, options, min: c.min ?? null, max: c.max ?? null };
   });
 }
 
@@ -132,7 +139,9 @@ interface StethoscribeApi {
   go: (screen: ScreenName, extra?: Partial<AppState>) => void;
   tplById: (id: string) => TemplateDef | undefined;
   tplByName: (name: string) => TemplateDef;
-  accentFor: (name: string) => string;
+  /** Resolve a report's template by stable id, falling back to the name
+   * snapshot; undefined when the template was deleted. */
+  tplForReport: (templateId: string | null | undefined, templateName: string) => TemplateDef | undefined;
   fmt: (n: number) => string;
   startExam: (id: string) => void;
   endExam: () => void;
@@ -150,7 +159,10 @@ interface StethoscribeApi {
   delTemplate: (id: string) => void;
   saveReport: () => void;
   sendReport: () => void;
+  downloadReport: () => void;
   delReport: (id: string) => void;
+  assignUnassigned: (index: number, catId: string) => void;
+  dismissUnassigned: (index: number) => void;
 }
 
 const StethoscribeCtx = createContext<StethoscribeApi | null>(null);
@@ -175,6 +187,19 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   // the field again — deliberate re-dictation wins, stale re-parses don't.
   const examEditMarksRef = useRef(new Map<number, number>()); // exam field index → token mark
   const reviewEditMarksRef = useRef(new Map<string, number>()); // review cat id → token mark
+  // Unassigned speech (spec §6.3): each re-parse re-derives the live session's
+  // unmatched segments from the full transcript, so the session list REPLACES
+  // rather than appends; segments from earlier sessions (a pause/resume
+  // restarts the transcript) are folded into the base. Combined at endExam
+  // into review.unassigned for the doctor to file or dismiss.
+  const examUnassignedBaseRef = useRef<string[]>([]);
+  const examSessionUnassignedRef = useRef<string[]>([]);
+  // Same for report-editor dictation; folded into review.unassigned on stop.
+  const dictationUnassignedRef = useRef<string[]>([]);
+  // Last value voice committed per field — detects genuinely NEW captures so
+  // the confirmation earcon fires once per capture, not once per re-parse.
+  const lastCaptureValuesRef = useRef(new Map<string, string>());
+  const lastDictationCaptureValuesRef = useRef(new Map<string, string>());
   const transcriptListenersRef = useRef(new Set<(text: string) => void>());
   // Report-editor dictation: its own speech source + compiled review categories,
   // and the last finalized transcript. Uses the exact same capture pipeline as
@@ -225,7 +250,17 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       dictationRef.current = null;
     }
     lastDictationFinalRef.current = '';
+    flushDictationUnassigned();
     releaseScreenWakeLock();
+  };
+
+  // Dictation's unmatched speech lands in review.unassigned only when the
+  // session ends — mid-session the list would churn on every re-parse.
+  const flushDictationUnassigned = () => {
+    const segs = dictationUnassignedRef.current;
+    if (!segs.length) return;
+    dictationUnassignedRef.current = [];
+    setState((s) => (s.review ? { ...s, review: { ...s.review, unassigned: [...s.review.unassigned, ...segs] } } : s));
   };
 
   useEffect(() => () => clearTimers(), []);
@@ -359,7 +394,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
 
   const tplById = (id: string) => state.templates.find((t) => t.id === id);
   const tplByName = (name: string) => state.templates.find((t) => t.name === name) || state.templates[0];
-  const accentFor = (name: string) => tplByName(name).accent;
+  // Resolves a report's template: by stable id first (survives renames), then
+  // by the name snapshot (legacy docs saved before ids were stored). Returns
+  // undefined when the template was deleted — callers fall back to the
+  // report's own name snapshot for display.
+  const tplForReport = (templateId: string | null | undefined, templateName: string): TemplateDef | undefined =>
+    (templateId ? state.templates.find((t) => t.id === templateId) : undefined) ??
+    state.templates.find((t) => t.name === templateName);
   const fmt = (n: number) => {
     const m = Math.floor(n / 60);
     const s = n % 60;
@@ -386,23 +427,33 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
 
   const endExam = () => {
     clearTimers();
+    // Snapshot the exam's unmatched speech before the refs reset; it becomes
+    // the review's resolvable "unassigned" list.
+    const unassigned = examUnassignedBaseRef.current.concat(examSessionUnassignedRef.current);
+    examUnassignedBaseRef.current = [];
+    examSessionUnassignedRef.current = [];
     setState((s) => {
       const cats = (s.examCats || []).map((c, idx) => ({
         id: 'f' + idx,
         name: c.name,
         nameHe: c.nameHe,
+        aliases: c.aliases ?? null,
         type: c.type,
         options: c.options,
         optionsHe: c.optionsHe,
+        unit: c.unit ?? null,
+        min: c.min ?? null,
+        max: c.max ?? null,
         sample: c.sample,
         sampleHe: c.sampleHe,
         low: !!c.low,
         override: c.override || null,
       }));
       const templateName = s.exam!.templateName;
+      const templateId = s.exam!.templateId;
       const uid = s.user?.uid;
       const tplDisplayName = s.lang === 'he'
-        ? (s.templates.find((tp) => tp.name === templateName)?.nameHe || templateName)
+        ? (s.templates.find((tp) => tp.id === templateId)?.nameHe || templateName)
         : templateName;
       const sameTemplateCount = s.reports.filter((r) => r.template === templateName).length;
       const defaultName = `${tplDisplayName} ${sameTemplateCount + 1}`;
@@ -411,11 +462,11 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         const hh = String(now.getHours()).padStart(2, '0');
         const mm = String(now.getMinutes()).padStart(2, '0');
         const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        saveReportDoc(uid, null, { date, time: hh + ':' + mm, template: templateName, name: defaultName, cats })
+        saveReportDoc(uid, null, { date, time: hh + ':' + mm, template: templateName, templateId, name: defaultName, cats, unassigned })
           .then((id) => setState((prev) => prev.review ? { ...prev, review: { ...prev.review, reportId: id } } : prev))
           .catch((err) => console.error('Auto-save report failed', err));
       }
-      return { ...s, screen: 'review', review: { templateName, name: defaultName, reportId: null, cats }, editingId: null, voiceActive: false, dictating: false, dictationError: null };
+      return { ...s, screen: 'review', review: { templateName, templateId, name: defaultName, reportId: null, cats, unassigned }, editingId: null, voiceActive: false, dictating: false, dictationError: null };
     });
     notifyTranscript('');
   };
@@ -445,6 +496,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     // offsets into the previous transcript) are meaningless — and safe to
     // drop: the stale utterances they guarded against are gone with it.
     examEditMarksRef.current.clear();
+    // The finished session's unmatched segments are final now — fold them
+    // into the base so the new session's list doesn't overwrite them.
+    examUnassignedBaseRef.current = examUnassignedBaseRef.current.concat(examSessionUnassignedRef.current);
+    examSessionUnassignedRef.current = [];
     const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
     const source = new WebSpeechSource(lang);
     speechRef.current = source;
@@ -465,6 +520,21 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         if (!finalChanged) return;
         lastFinalRef.current = finalText;
         const result = processTranscript(finalText, compiledRef.current);
+        examSessionUnassignedRef.current = result.unassigned;
+        // Audible/tactile confirmation for genuinely new captures — the doctor
+        // isn't looking at the screen. Detected against the last value voice
+        // committed per field, honoring the manual-edit marks.
+        let newCapture = false;
+        for (const f of result.fields) {
+          if (!f.value) continue;
+          const editMark = examEditMarksRef.current.get(Number(f.id));
+          if (editMark !== undefined && f.start < editMark) continue;
+          if (lastCaptureValuesRef.current.get(f.id) !== f.value) {
+            lastCaptureValuesRef.current.set(f.id, f.value);
+            newCapture = true;
+          }
+        }
+        if (newCapture) playCaptureFeedback();
         setState((s) => {
           if (!s.examCats || s.screen !== 'exam') return s;
           // Don't let voice clobber the field the doctor is manually editing,
@@ -481,7 +551,12 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         });
         if (result.stop) endExam();
       },
-      onError: (code) => update({ micError: code }),
+      onError: (code) => {
+        // The doctor may be mid-palpation and not looking — a dead mic must
+        // be heard/felt, not just shown.
+        if (FATAL_MIC_ERRORS.has(code)) playFailureFeedback();
+        update({ micError: code });
+      },
       onEnd: () => {},
     });
   };
@@ -492,9 +567,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     const cats = t.cats.map((c) => ({
       name: c.name,
       nameHe: c.nameHe,
+      aliases: c.aliases ?? null,
       type: c.type,
       options: c.options,
       optionsHe: c.optionsHe,
+      unit: c.unit ?? null,
+      min: c.min ?? null,
+      max: c.max ?? null,
       sample: c.sample,
       sampleHe: c.sampleHe,
       low: !!c.low,
@@ -503,13 +582,16 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     }));
     if (cats[0]) cats[0].status = 'active';
     clearTimers();
+    examUnassignedBaseRef.current = [];
+    examSessionUnassignedRef.current = [];
+    lastCaptureValuesRef.current.clear();
     // Voice exam is phone-only (spec §9). On a phone we do real voice (or show a
     // clear "unsupported browser" message); desktop keeps the simulated demo.
     const onPhone = isMobileDevice();
     const canVoice = onPhone && isSpeechSupported();
     update({
       screen: 'exam',
-      exam: { templateName: t.name },
+      exam: { templateName: t.name, templateId: t.id },
       examCats: cats,
       activeIdx: 0,
       elapsed: 0,
@@ -521,6 +603,8 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     // The doctor may not touch the device for minutes — a sleeping screen
     // suspends SpeechRecognition and silently kills the hands-free exam.
     keepScreenAwake();
+    // Inside the tap gesture, so the browser lets the earcons play later.
+    primeAudioFeedback();
     notifyTranscript('');
     clockRef.current = setInterval(() => setState((s) => (s.paused ? s : { ...s, elapsed: s.elapsed + 1 })), 1000);
     if (canVoice) {
@@ -570,6 +654,8 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     // Fresh dictation session ⇒ fresh transcript; old marks are stale (see
     // the matching reset in startVoice).
     reviewEditMarksRef.current.clear();
+    dictationUnassignedRef.current = [];
+    lastDictationCaptureValuesRef.current.clear();
     // Same compile step the exam uses, but over the report's own categories, so
     // spoken section names route findings to the matching fields.
     compiledReviewRef.current = compileCats(state.review.cats);
@@ -609,6 +695,19 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         if (!finalChanged) return;
         lastDictationFinalRef.current = finalText;
         const result = processTranscript(finalText, compiledReviewRef.current);
+        dictationUnassignedRef.current = result.unassigned;
+        // Same new-capture earcon as the live exam (see startVoice).
+        let newCapture = false;
+        for (const f of result.fields) {
+          if (!f.value) continue;
+          const editMark = reviewEditMarksRef.current.get(reviewIds[Number(f.id)]);
+          if (editMark !== undefined && f.start < editMark) continue;
+          if (lastDictationCaptureValuesRef.current.get(f.id) !== f.value) {
+            lastDictationCaptureValuesRef.current.set(f.id, f.value);
+            newCapture = true;
+          }
+        }
+        if (newCapture) playCaptureFeedback();
         setState((s) => {
           if (!s.review || s.screen !== 'review') return s;
           // Don't clobber a field the doctor is currently hand-editing.
@@ -632,12 +731,15 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         dictationRef.current = null;
         notifyPartialFields([]);
         releaseScreenWakeLock();
+        if (FATAL_MIC_ERRORS.has(code)) playFailureFeedback();
+        flushDictationUnassigned();
         update({ dictationError: code, dictating: false });
       },
       onEnd: () => {},
     });
     notifyTranscript('');
     keepScreenAwake();
+    primeAudioFeedback();
     update({ dictating: true, dictationError: null });
   };
 
@@ -648,6 +750,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     notifyTranscript('');
     notifyPartialFields([]);
     releaseScreenWakeLock();
+    flushDictationUnassigned();
     update({ dictating: false });
   };
 
@@ -659,17 +762,57 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   // Loads the report's actual captured findings from Firestore (the lightweight
   // list subscription only carries date/time/template/name, not field values).
   const reviewFromReport = async (report: ReportItem) => {
-    const t = tplByName(report.template);
     const uid = state.user?.uid;
     let cats: ReviewCategory[] = [];
+    let unassigned: string[] = [];
     if (uid) {
       try {
-        cats = (await getReportCats(uid, report.id)) || [];
+        const detail = await getReportDetail(uid, report.id);
+        if (detail) {
+          cats = detail.cats;
+          unassigned = detail.unassigned;
+        }
       } catch (err) {
         console.error('Load report failed', err);
       }
     }
-    go('review', { review: { templateName: t.name, name: report.name || '', reportId: report.id, cats }, editingId: null, nav: 'reports', dictating: false, dictationError: null });
+    const tpl = tplForReport(report.templateId, report.template);
+    go('review', {
+      review: {
+        templateName: tpl?.name ?? report.template,
+        templateId: report.templateId ?? tpl?.id ?? null,
+        name: report.name || '',
+        reportId: report.id,
+        cats,
+        unassigned,
+      },
+      editingId: null,
+      nav: 'reports',
+      dictating: false,
+      dictationError: null,
+    });
+  };
+
+  // Files an unassigned speech segment into a field (appended after any text
+  // already there) and drops it from the list. Marks the field hand-edited so
+  // a live dictation session won't clobber the result.
+  const assignUnassigned = (index: number, catId: string) => {
+    reviewEditMarksRef.current.set(catId, countTokens(lastDictationFinalRef.current));
+    setState((s) => {
+      if (!s.review || index < 0 || index >= s.review.unassigned.length) return s;
+      const seg = s.review.unassigned[index];
+      const unassigned = s.review.unassigned.filter((_, i) => i !== index);
+      const cats = s.review.cats.map((c) =>
+        c.id === catId ? { ...c, override: c.override?.trim() ? c.override + ' ' + seg : seg, low: false } : c,
+      );
+      return { ...s, review: { ...s.review, cats, unassigned } };
+    });
+  };
+
+  const dismissUnassigned = (index: number) => {
+    setState((s) =>
+      s.review ? { ...s, review: { ...s.review, unassigned: s.review.unassigned.filter((_, i) => i !== index) } } : s,
+    );
   };
 
   const setField = (id: string, val: string) => {
@@ -732,11 +875,15 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       id: 'b' + i + '_' + Math.random().toString(36).slice(2, 6),
       name: c.name,
       nameHe: c.nameHe,
+      aliases: c.aliases ? c.aliases.slice() : null,
       type: c.type,
       options: c.options ? c.options.slice() : null,
       optionsHe: c.optionsHe ? c.optionsHe.slice() : null,
+      unit: c.unit ?? null,
+      min: c.min ?? null,
+      max: c.max ?? null,
     }));
-    go('builder', { builder: { id: t.id, name: t.name, cats }, adding: false, addName: '', addOptions: '', addType: 'Free text', nav: 'templates' });
+    go('builder', { builder: { id: t.id, name: t.name, cats }, adding: false, addName: '', addOptions: '', addAliases: '', addUnit: '', addMin: '', addMax: '', addType: 'Free text', nav: 'templates' });
   };
 
   const newBuilder = () => {
@@ -752,6 +899,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       adding: false,
       addName: '',
       addOptions: '',
+      addAliases: '',
+      addUnit: '',
+      addMin: '',
+      addMax: '',
       addType: 'Free text',
       nav: 'templates',
     });
@@ -779,13 +930,34 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       if (!s.builder) return s;
       const name = s.addName.trim() || DICT[s.lang].types[s.addType as CategoryType];
       const opts = s.addType === 'List' ? s.addOptions.split(',').map((o) => o.trim()).filter(Boolean) : null;
-      const cat: BuilderCategory = { id: 'c' + Date.now(), name, nameHe: null, type: s.addType, options: opts, optionsHe: null };
+      const aliases = s.addAliases.split(',').map((a) => a.trim()).filter(Boolean);
+      const parseBound = (v: string): number | null => {
+        if (s.addType !== 'Number' || v.trim() === '') return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+      const cat: BuilderCategory = {
+        id: 'c' + Date.now(),
+        name,
+        nameHe: null,
+        aliases: aliases.length ? aliases : null,
+        type: s.addType,
+        options: opts,
+        optionsHe: null,
+        unit: s.addType === 'Number' ? s.addUnit.trim() || null : null,
+        min: parseBound(s.addMin),
+        max: parseBound(s.addMax),
+      };
       return {
         ...s,
         builder: { ...s.builder, cats: s.builder.cats.concat([cat]) },
         adding: false,
         addName: '',
         addOptions: '',
+        addAliases: '',
+        addUnit: '',
+        addMin: '',
+        addMax: '',
         addType: 'Free text',
       };
     });
@@ -802,9 +974,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     const cats: CategoryDef[] = b.cats.map((c) => ({
       name: c.name,
       nameHe: c.nameHe ?? null,
+      aliases: c.aliases ?? null,
       type: c.type,
       options: c.options ?? null,
       optionsHe: c.optionsHe ?? null,
+      unit: c.unit ?? null,
+      min: c.min ?? null,
+      max: c.max ?? null,
       sample: DICT.en.normal,
       sampleHe: DICT.he.normal,
     }));
@@ -845,8 +1021,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       date,
       time: hh + ':' + mm,
       template: review.templateName,
+      templateId: review.templateId,
       name: review.name.trim() || null,
       cats: review.cats,
+      unassigned: review.unassigned,
     }).catch((err) => console.error('Save report failed', err));
     go('reports', { nav: 'reports' });
   };
@@ -880,37 +1058,21 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       const token = getAccessToken();
       if (!token) throw new Error('No access token after sign-in');
 
-      const { sendReportEmail, MIME_DOCX, MIME_PDF } = await import('../mail/gmailSend');
+      const { sendReportEmail } = await import('../mail/gmailSend');
 
-      const tpl = tplByName(review.templateName);
-      const templateDisplayName = locImpl(state.lang, tpl, 'name') || review.templateName;
+      const tpl = tplForReport(review.templateId, review.templateName);
+      const templateDisplayName = (tpl ? locImpl(state.lang, tpl, 'name') : '') || review.templateName;
       const reportDisplayName = review.name?.trim() || templateDisplayName;
       const subject = `Stethoscribe. ${reportDisplayName}`;
       const body = DICT[state.lang].emailBody;
 
-      // Generate each selected format in parallel; skip formats the doctor
-      // didn't tick so we don't waste CPU on the mobile device.
-      const wantWord = state.exportFormats.word;
-      const wantPdf = state.exportFormats.pdf;
-      if (!wantWord && !wantPdf) throw new Error('No format selected');
-
-      const attachments: import('../mail/gmailSend').MailAttachment[] = [];
-      const jobs: Promise<void>[] = [];
-      if (wantWord) {
-        jobs.push((async () => {
-          const { generateReportDocx, reportFilename } = await import('../docx/reportDocx');
-          const blob = await generateReportDocx({ review, templateName: templateDisplayName, lang: state.lang });
-          attachments.push({ blob, filename: reportFilename(templateDisplayName, review.name), mimeType: MIME_DOCX });
-        })());
-      }
-      if (wantPdf) {
-        jobs.push((async () => {
-          const { generateReportPdf, reportPdfFilename } = await import('../pdf/reportPdf');
-          const blob = await generateReportPdf({ review, templateName: templateDisplayName, lang: state.lang });
-          attachments.push({ blob, filename: reportPdfFilename(templateDisplayName, review.name), mimeType: MIME_PDF });
-        })());
-      }
-      await Promise.all(jobs);
+      const attachments = await buildReportAttachments({
+        review,
+        templateName: templateDisplayName,
+        lang: state.lang,
+        formats: state.exportFormats,
+      });
+      if (!attachments.length) throw new Error('No format selected');
 
       await sendReportEmail({
         accessToken: token,
@@ -931,8 +1093,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         date,
         time: hh + ':' + mm,
         template: review.templateName,
+        templateId: review.templateId,
         name: review.name.trim() || null,
         cats: review.cats,
+        unassigned: review.unassigned,
       })
         .then((id) => setState((s) => s.review ? { ...s, review: { ...s.review, reportId: id } } : s))
         .catch((err) => console.error('Save report failed', err));
@@ -961,6 +1125,57 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     deleteReportDoc(uid, id).catch((err) => console.error('Delete report failed', err));
   };
 
+  // Local export (spec §5.4): produce the same files the email path sends,
+  // but hand them to the user directly — the native share sheet where files
+  // are supported (phones: save to Files, AirDrop, messaging apps), plain
+  // anchor downloads otherwise. Works with no Gmail scope at all.
+  const downloadReport = async () => {
+    const review = state.review;
+    if (!review || state.downloading) return;
+    update({ downloading: true, sendError: null });
+    try {
+      const tpl = tplForReport(review.templateId, review.templateName);
+      const templateDisplayName = (tpl ? locImpl(state.lang, tpl, 'name') : '') || review.templateName;
+      const attachments = await buildReportAttachments({
+        review,
+        templateName: templateDisplayName,
+        lang: state.lang,
+        formats: state.exportFormats,
+      });
+      if (!attachments.length) throw new Error('No format selected');
+
+      const files = attachments.map((a) => new File([a.blob], a.filename, { type: a.mimeType }));
+      let handled = false;
+      if ('canShare' in navigator && navigator.canShare({ files })) {
+        try {
+          await navigator.share({ files });
+          handled = true;
+        } catch (err) {
+          // Doctor closed the share sheet — that's a completed interaction,
+          // not a failure. Anything else falls back to plain downloads.
+          if ((err as Error).name === 'AbortError') handled = true;
+        }
+      }
+      if (!handled) {
+        for (const att of attachments) {
+          const url = URL.createObjectURL(att.blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = att.filename;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        }
+      }
+      update({ downloading: false });
+    } catch (err) {
+      console.error('Export download failed', err);
+      update({ downloading: false, sendError: 'download' });
+    }
+  };
+
   const rtl = state.lang === 'he';
   const api: StethoscribeApi = {
     state,
@@ -977,7 +1192,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     go,
     tplById,
     tplByName,
-    accentFor,
+    tplForReport,
     fmt,
     startExam,
     endExam,
@@ -995,7 +1210,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     delTemplate,
     saveReport,
     sendReport,
+    downloadReport,
     delReport,
+    assignUnassigned,
+    dismissUnassigned,
   };
 
   return <StethoscribeCtx.Provider value={api}>{children}</StethoscribeCtx.Provider>;

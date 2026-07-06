@@ -5,7 +5,7 @@ import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function HomeScreen() {
-  const { state, t, loc, rtl, go, update, signOut, startExam, reviewFromReport, accentFor, tplByName } = useStethoscribe();
+  const { state, t, loc, rtl, go, update, signOut, startExam, reviewFromReport, tplForReport } = useStethoscribe();
   const [avatarError, setAvatarError] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
@@ -13,6 +13,13 @@ export function HomeScreen() {
   const firstName = state.user?.displayName?.split(' ')[0] || t.clinician;
   const initial = (state.user?.displayName || state.user?.email || '?').charAt(0).toUpperCase();
   const recentReports = state.reports.slice(0, 4);
+  // Reports resolve their template by stable id; deleted templates fall back
+  // to the name snapshot on the report and a neutral accent.
+  const reportTplName = (r: (typeof recentReports)[number]) => {
+    const tpl = tplForReport(r.templateId, r.template);
+    return tpl ? loc(tpl, 'name') : r.template;
+  };
+  const reportAccent = (r: (typeof recentReports)[number]) => tplForReport(r.templateId, r.template)?.accent ?? color.muted;
 
   return (
     <>
@@ -199,9 +206,9 @@ export function HomeScreen() {
                 boxShadow: '0 1px 0 rgba(23,58,75,.03)',
               }}
             >
-              <span style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, background: accentFor(r.template) }} />
+              <span style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, background: reportAccent(r) }} />
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: color.ink }}>{loc(tplByName(r.template), 'name')}</span>
+                <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: color.ink }}>{reportTplName(r)}</span>
                 <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.muted, marginTop: 2 }}>
                   {r.date} · {r.time}
                 </span>

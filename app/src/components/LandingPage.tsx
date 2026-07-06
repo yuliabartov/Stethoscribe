@@ -165,6 +165,8 @@ export function LandingPage() {
       {/* Footer */}
       <footer style={{ ...container, paddingTop: 8, paddingBottom: 28, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 10, borderTop: `1px solid ${color.borderCream3}`, marginTop: 'auto' }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: color.muted }}>© {new Date().getFullYear()} Stethoscribe · {t.landRights}</span>
+        <span style={{ fontSize: 13, color: color.muted }}>·</span>
+        <a href="/privacy" style={{ fontSize: 13, fontWeight: 700, color: color.teal, textDecoration: 'none' }}>{t.privacyLink}</a>
       </footer>
     </div>
   );

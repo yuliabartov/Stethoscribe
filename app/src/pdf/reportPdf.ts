@@ -32,7 +32,9 @@ function buildHtml({ review, templateName, lang }: ReportPdfInput): string {
   const title = review.name?.trim() || templateName;
   const rows = review.cats.map((c) => {
     const name = loc(lang, c, 'name');
-    const content = (c.override ?? '').trim();
+    let content = (c.override ?? '').trim();
+    // Captured numbers render with their template unit label (spec §6.4).
+    if (content && c.type === 'Number' && c.unit) content = `${content} ${c.unit}`;
     const text = content ? `${name} - ${content}` : `${name} -`;
     return `<p style="font-size:15px;margin:0 0 10px;line-height:1.55;color:#111;">${escapeHtml(text)}</p>`;
   }).join('');

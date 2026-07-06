@@ -37,9 +37,13 @@ function sanitizeCats(cats: CategoryDef[]): DocumentData[] {
   return cats.map((c) => ({
     name: c.name,
     nameHe: c.nameHe ?? null,
+    aliases: c.aliases ?? null,
     type: c.type,
     options: c.options ?? null,
     optionsHe: c.optionsHe ?? null,
+    unit: c.unit ?? null,
+    min: c.min ?? null,
+    max: c.max ?? null,
     sample: c.sample,
     sampleHe: c.sampleHe ?? null,
     low: c.low ?? false,
@@ -51,9 +55,13 @@ function sanitizeReviewCats(cats: ReviewCategory[]): DocumentData[] {
     id: c.id,
     name: c.name,
     nameHe: c.nameHe ?? null,
+    aliases: c.aliases ?? null,
     type: c.type,
     options: c.options ?? null,
     optionsHe: c.optionsHe ?? null,
+    unit: c.unit ?? null,
+    min: c.min ?? null,
+    max: c.max ?? null,
     sample: c.sample,
     sampleHe: c.sampleHe ?? null,
     low: c.low,
@@ -77,7 +85,14 @@ function toTemplateDef(d: QueryDocumentSnapshot<DocumentData>): TemplateDef {
 
 function toReportItem(d: QueryDocumentSnapshot<DocumentData>): ReportItem {
   const data = d.data();
-  return { id: d.id, date: data.date, time: data.time, template: data.template, name: data.name ?? null };
+  return {
+    id: d.id,
+    date: data.date,
+    time: data.time,
+    template: data.template,
+    templateId: data.templateId ?? null,
+    name: data.name ?? null,
+  };
 }
 
 /**
@@ -137,22 +152,33 @@ interface ReportPayload {
   date: string;
   time: string;
   template: string;
+  templateId: string | null;
   name: string | null;
   cats: ReviewCategory[];
+  unassigned: string[];
 }
 
-/** Creates a new report, or overwrites an existing one when `id` is given —
- * re-sending an edited report updates it in place instead of duplicating it. */
+/** Creates a new report, or updates an existing one when `id` is given —
+ * re-sending an edited report updates it in place instead of duplicating it.
+ * Updates merge: the creation timestamp and displayed date/time are set once
+ * at creation and preserved on edit (editing a report must not re-date it or
+ * reorder the createdAt-sorted list); updatedAt tracks the last edit. */
 export async function saveReportDoc(uid: string, id: string | null, data: ReportPayload): Promise<string> {
   const ref = id ? reportDoc(uid, id) : doc(reportsCol(uid));
-  await setDoc(ref, {
-    date: data.date,
-    time: data.time,
+  const payload: DocumentData = {
     template: data.template,
+    templateId: data.templateId,
     name: data.name,
     cats: sanitizeReviewCats(data.cats),
-    createdAt: serverTimestamp(),
-  });
+    unassigned: data.unassigned,
+    updatedAt: serverTimestamp(),
+  };
+  if (!id) {
+    payload.date = data.date;
+    payload.time = data.time;
+    payload.createdAt = serverTimestamp();
+  }
+  await setDoc(ref, payload, { merge: true });
   return ref.id;
 }
 
@@ -160,12 +186,22 @@ export async function deleteReportDoc(uid: string, id: string): Promise<void> {
   await deleteDoc(reportDoc(uid, id));
 }
 
-/** Fetches a single report's captured findings (not included in the lightweight
- * list subscription above, to keep the reports list cheap to sync). */
-export async function getReportCats(uid: string, id: string): Promise<ReviewCategory[] | null> {
+export interface ReportDetail {
+  cats: ReviewCategory[];
+  unassigned: string[];
+}
+
+/** Fetches a single report's captured findings + unassigned speech (not
+ * included in the lightweight list subscription above, to keep the reports
+ * list cheap to sync). */
+export async function getReportDetail(uid: string, id: string): Promise<ReportDetail | null> {
   const snap = await getDoc(reportDoc(uid, id));
   if (!snap.exists()) return null;
-  return (snap.data().cats as ReviewCategory[]) || [];
+  const data = snap.data();
+  return {
+    cats: (data.cats as ReviewCategory[]) || [],
+    unassigned: (data.unassigned as string[]) || [],
+  };
 }
 
 /** Sign-out hygiene: terminates Firestore and wipes its IndexedDB cache so

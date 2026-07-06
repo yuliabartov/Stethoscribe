@@ -40,14 +40,16 @@ button {
   overscroll-behavior: contain;
 }
 
-/* PhoneFrame: fixed "phone mockup" size on wide screens, fills viewport on phones/tablets. */
+/* PhoneFrame: fills the viewport on phones/tablets; on desktop it widens
+   into a comfortable centered editing column (spec §9 — web is the surface
+   for comfortable review/editing) instead of the old 440px phone mockup. */
 .phone-frame {
   position: relative;
-  width: min(440px, 100vw);
-  height: min(940px, 100dvh);
+  width: min(720px, 100vw);
+  height: min(1100px, calc(100dvh - 40px));
   background: #FBF8F2;
   overflow: hidden;
-  border-radius: 38px;
+  border-radius: 30px;
   box-shadow:
     0 40px 90px -30px rgba(23, 58, 75, 0.45),
     0 0 0 1px rgba(23, 58, 75, 0.04);
