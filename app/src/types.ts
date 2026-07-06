@@ -164,8 +164,12 @@ export interface AppState {
   editingId: string | null;
   builder: BuilderState | null;
   adding: boolean;
+  /** Builder category being edited via the shared category form; null = the
+   * form (when open) is adding a new category instead. */
+  editCatId: string | null;
   addType: CategoryType;
   addName: string;
+  addNameHe: string;
   addOptions: string;
   addAliases: string;
   addUnit: string;

@@ -45,8 +45,10 @@ const initialState: AppState = {
   editingId: null,
   builder: null,
   adding: false,
+  editCatId: null,
   addType: 'Free text',
   addName: '',
+  addNameHe: '',
   addOptions: '',
   addAliases: '',
   addUnit: '',
@@ -154,6 +156,7 @@ interface StethoscribeApi {
   newBuilder: () => void;
   moveCat: (idx: number, dir: 1 | -1) => void;
   delCat: (id: string) => void;
+  startEditCat: (id: string) => void;
   confirmAdd: () => void;
   saveTemplate: () => void;
   delTemplate: (id: string) => void;
@@ -883,7 +886,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       min: c.min ?? null,
       max: c.max ?? null,
     }));
-    go('builder', { builder: { id: t.id, name: t.name, cats }, adding: false, addName: '', addOptions: '', addAliases: '', addUnit: '', addMin: '', addMax: '', addType: 'Free text', nav: 'templates' });
+    go('builder', { builder: { id: t.id, name: t.name, cats }, adding: false, editCatId: null, addName: '', addNameHe: '', addOptions: '', addAliases: '', addUnit: '', addMin: '', addMax: '', addType: 'Free text', nav: 'templates' });
   };
 
   const newBuilder = () => {
@@ -897,7 +900,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         ],
       },
       adding: false,
+      editCatId: null,
       addName: '',
+      addNameHe: '',
       addOptions: '',
       addAliases: '',
       addUnit: '',
@@ -922,13 +927,44 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   };
 
   const delCat = (id: string) => {
-    setState((s) => (s.builder ? { ...s, builder: { ...s.builder, cats: s.builder.cats.filter((c) => c.id !== id) } } : s));
+    setState((s) =>
+      s.builder
+        ? {
+            ...s,
+            builder: { ...s.builder, cats: s.builder.cats.filter((c) => c.id !== id) },
+            // Deleting the category whose edit form is open closes the form.
+            editCatId: s.editCatId === id ? null : s.editCatId,
+          }
+        : s,
+    );
   };
 
+  // Opens the shared category form pre-filled with an existing category's
+  // values; confirmAdd applies the changes back to that category.
+  const startEditCat = (id: string) => {
+    const c = state.builder?.cats.find((x) => x.id === id);
+    if (!c) return;
+    update({
+      editCatId: id,
+      adding: false,
+      addName: c.name,
+      addNameHe: c.nameHe ?? '',
+      addAliases: (c.aliases ?? []).join(', '),
+      addType: c.type,
+      addOptions: (c.options ?? []).join(', '),
+      addUnit: c.unit ?? '',
+      addMin: c.min != null ? String(c.min) : '',
+      addMax: c.max != null ? String(c.max) : '',
+    });
+  };
+
+  // Confirms the shared category form: appends a new category, or — when
+  // editCatId is set — applies the values back onto that existing category.
   const confirmAdd = () => {
     setState((s) => {
       if (!s.builder) return s;
       const name = s.addName.trim() || DICT[s.lang].types[s.addType as CategoryType];
+      const nameHe = s.addNameHe.trim() || null;
       const opts = s.addType === 'List' ? s.addOptions.split(',').map((o) => o.trim()).filter(Boolean) : null;
       const aliases = s.addAliases.split(',').map((a) => a.trim()).filter(Boolean);
       const parseBound = (v: string): number | null => {
@@ -936,23 +972,37 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         const n = Number(v);
         return Number.isFinite(n) ? n : null;
       };
-      const cat: BuilderCategory = {
-        id: 'c' + Date.now(),
+      const values = {
         name,
-        nameHe: null,
+        nameHe,
         aliases: aliases.length ? aliases : null,
         type: s.addType,
         options: opts,
-        optionsHe: null,
         unit: s.addType === 'Number' ? s.addUnit.trim() || null : null,
         min: parseBound(s.addMin),
         max: parseBound(s.addMax),
       };
+      let cats: BuilderCategory[];
+      if (s.editCatId) {
+        cats = s.builder.cats.map((c) => {
+          if (c.id !== s.editCatId) return c;
+          // The form edits the primary options list only; keep the Hebrew
+          // option translations while the list is unchanged, but drop them
+          // once it changes — a misaligned translation silently mislabels
+          // choices, whereas dropping falls back to the primary options.
+          const sameOptions = JSON.stringify(c.options ?? null) === JSON.stringify(opts);
+          return { ...c, ...values, optionsHe: sameOptions ? c.optionsHe ?? null : null };
+        });
+      } else {
+        cats = s.builder.cats.concat([{ id: 'c' + Date.now(), ...values, optionsHe: null }]);
+      }
       return {
         ...s,
-        builder: { ...s.builder, cats: s.builder.cats.concat([cat]) },
+        builder: { ...s.builder, cats },
         adding: false,
+        editCatId: null,
         addName: '',
+        addNameHe: '',
         addOptions: '',
         addAliases: '',
         addUnit: '',
@@ -1205,6 +1255,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     newBuilder,
     moveCat,
     delCat,
+    startEditCat,
     confirmAdd,
     saveTemplate,
     delTemplate,

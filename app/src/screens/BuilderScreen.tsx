@@ -1,7 +1,8 @@
+import type { CSSProperties } from 'react';
 import { BackButton } from '../components/BackButton';
 import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
-import type { BuilderCategory, CategoryType } from '../types';
+import type { AppState, BuilderCategory, CategoryType } from '../types';
 
 const TYPE_META: Record<CategoryType, { bg: string; color: string }> = {
   'Free text': { bg: color.typeFreeBg, color: color.typeFreeColor },
@@ -11,8 +12,136 @@ const TYPE_META: Record<CategoryType, { bg: string; color: string }> = {
 
 const TYPES: CategoryType[] = ['Free text', 'Number', 'List'];
 
+/** Clears the shared category form and closes both its modes. */
+const FORM_RESET: Partial<AppState> = {
+  adding: false,
+  editCatId: null,
+  addName: '',
+  addNameHe: '',
+  addOptions: '',
+  addAliases: '',
+  addUnit: '',
+  addMin: '',
+  addMax: '',
+  addType: 'Free text',
+};
+
+const formInput: CSSProperties = {
+  width: '100%',
+  padding: '13px 14px',
+  border: `1.5px solid ${color.borderMint}`,
+  borderRadius: 13,
+  background: '#fff',
+  fontSize: 14,
+  fontWeight: 600,
+  color: color.ink,
+  outline: 'none',
+  marginBottom: 12,
+};
+
+// One form for both "new category" and "edit category" — the same AppState
+// add* fields back it; state.editCatId decides whether confirmAdd appends or
+// applies onto the existing category.
+function CategoryForm({ editing }: { editing: boolean }) {
+  const { state, t, update, confirmAdd } = useStethoscribe();
+  return (
+    <div style={{ border: `1.5px solid ${color.tealSoftBorder}`, background: color.tealSoftBg, borderRadius: 18, padding: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: color.ink, marginBottom: 12 }}>{editing ? t.editCategory : t.newCategory}</div>
+      <input
+        value={state.addName}
+        onChange={(e) => update({ addName: e.target.value })}
+        placeholder={t.categoryNamePlaceholder}
+        style={{ ...formInput, fontSize: 15 }}
+      />
+      <input
+        value={state.addNameHe}
+        onChange={(e) => update({ addNameHe: e.target.value })}
+        placeholder={t.categoryNameHePlaceholder}
+        dir="rtl"
+        style={formInput}
+      />
+      <input
+        value={state.addAliases}
+        onChange={(e) => update({ addAliases: e.target.value })}
+        placeholder={t.aliasesPlaceholder}
+        style={formInput}
+      />
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: color.inkMute, marginBottom: 8 }}>{t.typeLabel}</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {TYPES.map((ty) => {
+          const selected = state.addType === ty;
+          return (
+            <button
+              key={ty}
+              onClick={() => update({ addType: ty })}
+              style={{
+                flex: 1,
+                padding: '11px 6px',
+                borderRadius: 12,
+                fontSize: 13.5,
+                fontWeight: 700,
+                border: `1.5px solid ${selected ? color.teal : color.borderMint}`,
+                background: selected ? color.teal : '#fff',
+                color: selected ? '#fff' : color.inkSoft,
+              }}
+            >
+              {t.types[ty]}
+            </button>
+          );
+        })}
+      </div>
+      {state.addType === 'List' && (
+        <input
+          value={state.addOptions}
+          onChange={(e) => update({ addOptions: e.target.value })}
+          placeholder={t.optionsPlaceholder}
+          style={formInput}
+        />
+      )}
+      {state.addType === 'Number' && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            value={state.addUnit}
+            onChange={(e) => update({ addUnit: e.target.value })}
+            placeholder={t.unitPlaceholder}
+            style={{ ...formInput, flex: 2, minWidth: 0, width: 'auto', marginBottom: 0 }}
+          />
+          <input
+            value={state.addMin}
+            onChange={(e) => update({ addMin: e.target.value })}
+            placeholder={t.minPlaceholder}
+            inputMode="decimal"
+            style={{ ...formInput, flex: 1, minWidth: 0, width: 'auto', marginBottom: 0 }}
+          />
+          <input
+            value={state.addMax}
+            onChange={(e) => update({ addMax: e.target.value })}
+            placeholder={t.maxPlaceholder}
+            inputMode="decimal"
+            style={{ ...formInput, flex: 1, minWidth: 0, width: 'auto', marginBottom: 0 }}
+          />
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          onClick={() => update(FORM_RESET)}
+          style={{ flex: 1, padding: 13, border: `1.5px solid ${color.borderMint}`, background: '#fff', borderRadius: 13, fontSize: 14.5, fontWeight: 700, color: color.inkSoft }}
+        >
+          {t.cancel}
+        </button>
+        <button
+          onClick={confirmAdd}
+          style={{ flex: 1, padding: 13, border: 'none', background: color.teal, borderRadius: 13, fontSize: 14.5, fontWeight: 700, color: '#fff' }}
+        >
+          {editing ? t.saveBtn : t.add}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function BuilderScreen() {
-  const { state, t, loc, rtl, update, moveCat, delCat, confirmAdd, saveTemplate, go } = useStethoscribe();
+  const { state, t, loc, rtl, update, moveCat, delCat, startEditCat, saveTemplate, go } = useStethoscribe();
   const builder = state.builder!;
 
   const locOptions = (c: BuilderCategory): string[] => {
@@ -57,6 +186,9 @@ export function BuilderScreen() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
           {builder.cats.map((c, idx) => {
+            if (state.editCatId === c.id) {
+              return <CategoryForm key={c.id} editing />;
+            }
             const meta = TYPE_META[c.type];
             const hasOptions = c.type === 'List' && c.options && c.options.length > 0;
             return (
@@ -82,7 +214,7 @@ export function BuilderScreen() {
                     </svg>
                   </button>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div onClick={() => startEditCat(c.id)} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
                   <div style={{ fontSize: 15.5, fontWeight: 700, color: color.ink }}>{loc(c, 'name')}</div>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 5, padding: '3px 9px', borderRadius: 8, background: meta.bg }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: meta.color }}>{t.types[c.type]}</span>
@@ -100,6 +232,15 @@ export function BuilderScreen() {
                   )}
                 </div>
                 <button
+                  onClick={() => startEditCat(c.id)}
+                  aria-label={t.editCategory}
+                  style={{ width: 34, height: 34, border: 'none', background: '#F4F0E6', borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color.inkSoft} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
+                <button
                   onClick={() => delCat(c.id)}
                   style={{ width: 34, height: 34, border: 'none', background: color.delBg, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                 >
@@ -113,127 +254,12 @@ export function BuilderScreen() {
         </div>
 
         {state.adding ? (
-          <div style={{ marginTop: 14, border: `1.5px solid ${color.tealSoftBorder}`, background: color.tealSoftBg, borderRadius: 18, padding: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: color.ink, marginBottom: 12 }}>{t.newCategory}</div>
-            <input
-              value={state.addName}
-              onChange={(e) => update({ addName: e.target.value })}
-              placeholder={t.categoryNamePlaceholder}
-              style={{
-                width: '100%',
-                padding: '13px 14px',
-                border: `1.5px solid ${color.borderMint}`,
-                borderRadius: 13,
-                background: '#fff',
-                fontSize: 15,
-                fontWeight: 600,
-                color: color.ink,
-                outline: 'none',
-                marginBottom: 12,
-              }}
-            />
-            <input
-              value={state.addAliases}
-              onChange={(e) => update({ addAliases: e.target.value })}
-              placeholder={t.aliasesPlaceholder}
-              style={{
-                width: '100%',
-                padding: '13px 14px',
-                border: `1.5px solid ${color.borderMint}`,
-                borderRadius: 13,
-                background: '#fff',
-                fontSize: 14,
-                fontWeight: 600,
-                color: color.ink,
-                outline: 'none',
-                marginBottom: 12,
-              }}
-            />
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: color.inkMute, marginBottom: 8 }}>{t.typeLabel}</div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              {TYPES.map((ty) => {
-                const selected = state.addType === ty;
-                return (
-                  <button
-                    key={ty}
-                    onClick={() => update({ addType: ty })}
-                    style={{
-                      flex: 1,
-                      padding: '11px 6px',
-                      borderRadius: 12,
-                      fontSize: 13.5,
-                      fontWeight: 700,
-                      border: `1.5px solid ${selected ? color.teal : color.borderMint}`,
-                      background: selected ? color.teal : '#fff',
-                      color: selected ? '#fff' : color.inkSoft,
-                    }}
-                  >
-                    {t.types[ty]}
-                  </button>
-                );
-              })}
-            </div>
-            {state.addType === 'List' && (
-              <input
-                value={state.addOptions}
-                onChange={(e) => update({ addOptions: e.target.value })}
-                placeholder={t.optionsPlaceholder}
-                style={{
-                  width: '100%',
-                  padding: '13px 14px',
-                  border: `1.5px solid ${color.borderMint}`,
-                  borderRadius: 13,
-                  background: '#fff',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: color.ink,
-                  outline: 'none',
-                  marginBottom: 12,
-                }}
-              />
-            )}
-            {state.addType === 'Number' && (
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <input
-                  value={state.addUnit}
-                  onChange={(e) => update({ addUnit: e.target.value })}
-                  placeholder={t.unitPlaceholder}
-                  style={{ flex: 2, minWidth: 0, padding: '13px 14px', border: `1.5px solid ${color.borderMint}`, borderRadius: 13, background: '#fff', fontSize: 14, fontWeight: 600, color: color.ink, outline: 'none' }}
-                />
-                <input
-                  value={state.addMin}
-                  onChange={(e) => update({ addMin: e.target.value })}
-                  placeholder={t.minPlaceholder}
-                  inputMode="decimal"
-                  style={{ flex: 1, minWidth: 0, padding: '13px 14px', border: `1.5px solid ${color.borderMint}`, borderRadius: 13, background: '#fff', fontSize: 14, fontWeight: 600, color: color.ink, outline: 'none' }}
-                />
-                <input
-                  value={state.addMax}
-                  onChange={(e) => update({ addMax: e.target.value })}
-                  placeholder={t.maxPlaceholder}
-                  inputMode="decimal"
-                  style={{ flex: 1, minWidth: 0, padding: '13px 14px', border: `1.5px solid ${color.borderMint}`, borderRadius: 13, background: '#fff', fontSize: 14, fontWeight: 600, color: color.ink, outline: 'none' }}
-                />
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => update({ adding: false, addName: '', addOptions: '', addAliases: '', addUnit: '', addMin: '', addMax: '', addType: 'Free text' })}
-                style={{ flex: 1, padding: 13, border: `1.5px solid ${color.borderMint}`, background: '#fff', borderRadius: 13, fontSize: 14.5, fontWeight: 700, color: color.inkSoft }}
-              >
-                {t.cancel}
-              </button>
-              <button
-                onClick={confirmAdd}
-                style={{ flex: 1, padding: 13, border: 'none', background: color.teal, borderRadius: 13, fontSize: 14.5, fontWeight: 700, color: '#fff' }}
-              >
-                {t.add}
-              </button>
-            </div>
+          <div style={{ marginTop: 14 }}>
+            <CategoryForm editing={false} />
           </div>
         ) : (
           <button
-            onClick={() => update({ adding: true })}
+            onClick={() => update({ ...FORM_RESET, adding: true })}
             style={{
               display: 'flex',
               alignItems: 'center',
