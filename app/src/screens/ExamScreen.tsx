@@ -170,7 +170,9 @@ export function ExamScreen() {
                 place the doctor glances at to confirm listening is on. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: state.paused || micDead ? 'rgba(255,255,255,.12)' : color.examLiveBg, padding: '8px 13px', borderRadius: 999 }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: micDead ? color.warnText : state.paused ? color.chevron3 : color.tealBright, animation: state.paused || micDead ? 'none' : 'ssBlink 1.1s infinite' }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: state.paused || micDead ? '#fff' : color.tealPale }}>{micDead ? t.micOff : state.paused ? t.paused : t.live}</span>
+              {/* The raw code doubles as a remote-diagnosis aid — a doctor can
+                  read it off the screen when reporting a voice problem. */}
+              <span style={{ fontSize: 13, fontWeight: 700, color: state.paused || micDead ? '#fff' : color.tealPale }}>{micDead ? `${t.micOff} · ${state.micError}` : state.paused ? t.paused : t.live}</span>
             </div>
           </div>
         </div>

@@ -18,7 +18,7 @@ import { DICT, loc as locImpl } from '../i18n';
 import { isValidEmail } from '../mail/emailAddress';
 import { FATAL_MIC_ERRORS, playCaptureFeedback, playFailureFeedback, primeAudioFeedback } from '../voice/feedback';
 import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
-import { WebSpeechSource, ensureMicPermission, isIOSStandalone, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
+import { WebSpeechSource, ensureMicPermission, isIOSDevice, isIOSStandalone, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
 import { keepScreenAwake, releaseScreenWakeLock } from '../voice/wakeLock';
 import type { AppState, AuthUser, BuilderCategory, CategoryDef, CategoryType, ExamCatStatus, ExamCategory, NavName, ReportItem, ReviewCategory, ScreenName, TemplateDef } from '../types';
 
@@ -543,20 +543,25 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   // transcript on each result keeps field assignment stable. Restarts itself
   // on resume; clearTimers() stops the mic when leaving the exam.
   const startVoice = async () => {
-    // Establish the mic grant via getUserMedia BEFORE opening the speech
-    // recognizer. The browser remembers this grant for the session (and, on
-    // Chrome/Android, across reloads — queryable via the Permissions API), so
-    // SpeechRecognition.start() below silently reuses it instead of raising its
-    // own prompt. On the next exam in the same session, ensureMicPermission
-    // sees 'granted' and resolves instantly with no prompt at all. This is what
-    // makes it "ask once, then remembered" rather than prompting per start.
     const epoch = ++voiceEpochRef.current;
-    const perm = await ensureMicPermission();
-    // Bailed out (doctor left the exam / paused) while we awaited the grant.
-    if (voiceEpochRef.current !== epoch) return;
-    if (perm === 'denied') {
-      update({ micError: 'not-allowed' });
-      return;
+    // iOS Safari: SpeechRecognition.start() must be reached SYNCHRONOUSLY
+    // inside the doctor's tap. Awaiting getUserMedia here both (a) leaves the
+    // user-gesture context — iOS then lets the session "start" without error
+    // but never deliver a single result (frozen exam, no message), and (b)
+    // opens/closes the mic's AVAudioSession right before recognition arms its
+    // own (the two are separate sessions on iOS — see the sign-in comment).
+    // Recognition raises its own permission prompt on iOS anyway, so priming
+    // buys nothing there. On Android/Chrome the getUserMedia grant genuinely
+    // carries over and persists across reloads — keep priming so the doctor
+    // is asked once instead of per start.
+    if (!isIOSDevice()) {
+      const perm = await ensureMicPermission();
+      // Bailed out (doctor left the exam / paused) while we awaited the grant.
+      if (voiceEpochRef.current !== epoch) return;
+      if (perm === 'denied') {
+        update({ micError: 'not-allowed' });
+        return;
+      }
     }
     lastFinalRef.current = '';
     lastUiAtRef.current = 0;
@@ -719,12 +724,16 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     // Prime the mic grant up front (same rationale as startVoice) so the
     // recognizer reuses it instead of prompting — and so a grant established
     // by the exam carries over to dictation silently, and vice-versa.
+    // Never on iOS: the await would leave the tap gesture and the recognizer
+    // would start into a dead session (see startVoice).
     const epoch = ++voiceEpochRef.current;
-    const perm = await ensureMicPermission();
-    if (voiceEpochRef.current !== epoch) return; // toggled off while awaiting
-    if (perm === 'denied') {
-      update({ dictationError: 'not-allowed' });
-      return;
+    if (!isIOSDevice()) {
+      const perm = await ensureMicPermission();
+      if (voiceEpochRef.current !== epoch) return; // toggled off while awaiting
+      if (perm === 'denied') {
+        update({ dictationError: 'not-allowed' });
+        return;
+      }
     }
     lastDictationFinalRef.current = '';
     lastDictationUiAtRef.current = 0;

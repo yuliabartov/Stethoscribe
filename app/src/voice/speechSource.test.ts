@@ -139,14 +139,35 @@ describe('WebSpeechSource session management', () => {
     src.stop();
   });
 
-  it('recycles a zombie session that produces no events at all', () => {
+  it('recycles a zombie session once, then surfaces restart-failed instead of spinning silently', () => {
     const src = new WebSpeechSource('he-IL');
     src.start(h.handlers);
     expect(FakeRec.instances).toHaveLength(1);
-    // Session "started" but never fires anything — the watchdog must replace it.
-    vi.advanceTimersByTime(21_000);
-    expect(FakeRec.instances.length).toBeGreaterThanOrEqual(2);
+    // Born-dead session (e.g. started outside a user gesture on iOS):
+    // started, but never fires a single event.
+    vi.advanceTimersByTime(21_000); // first strike → quiet recycle
+    expect(FakeRec.instances).toHaveLength(2);
     expect(FakeRec.instances.at(-1)!.started).toBe(true);
+    expect(h.errors).toHaveLength(0);
+    vi.advanceTimersByTime(21_000); // second strike → give up loudly
+    expect(h.errors).toContain('restart-failed');
+    const spawned = FakeRec.instances.length;
+    vi.advanceTimersByTime(120_000); // watchdog fully stopped — no respawns
+    expect(FakeRec.instances.length).toBe(spawned);
+    src.stop();
+  });
+
+  it('a single zombie recycle recovers quietly when the fresh session works', () => {
+    const src = new WebSpeechSource('he-IL');
+    src.start(h.handlers);
+    vi.advanceTimersByTime(21_000); // strike 1 → recycle
+    const fresh = FakeRec.instances.at(-1)!;
+    fireFinal(fresh, 'heart rate 78'); // recovered — strike counter resets
+    // Without the reset, the next silent stretch would be strike 2 and fail;
+    // with it, it's strike 1 again → just another quiet recycle.
+    vi.advanceTimersByTime(25_000);
+    expect(h.errors).toHaveLength(0);
+    expect(h.transcripts.at(-1)).toBe('heart rate 78');
     src.stop();
   });
 

@@ -413,7 +413,7 @@ export function ReviewScreen() {
             }}
           >
             {state.dictationError ? (
-              <span>{dictationErrorText}</span>
+              <span>{dictationErrorText} <span style={{ opacity: 0.65 }}>({state.dictationError})</span></span>
             ) : (
               <>
                 <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14, flexShrink: 0 }}>

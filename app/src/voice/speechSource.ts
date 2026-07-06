@@ -61,14 +61,19 @@ export function isMobileDevice(): boolean {
   return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
 }
 
+/** iPhone/iPad detection (iPadOS 13+ reports as Mac but exposes touch). */
+export function isIOSDevice(): boolean {
+  const ua = navigator.userAgent || '';
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
+}
+
 /** iOS home-screen web app ("Add to Home Screen"). On iOS, SpeechRecognition
  * only works in Safari proper — in standalone mode the constructor exists but
  * sessions yield nothing (the spec explicitly rejects PWA mode for the exam,
  * §14). Detect it so the app says so instead of appearing to listen. */
 export function isIOSStandalone(): boolean {
-  const ua = navigator.userAgent || '';
-  const iOS = /iPad|iPhone|iPod/.test(ua) || (/Mac/.test(ua) && navigator.maxTouchPoints > 1);
-  if (!iOS) return false;
+  if (!isIOSDevice()) return false;
   const nav = navigator as { standalone?: boolean };
   return nav.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 }
@@ -134,6 +139,10 @@ const MAX_RESTART_ATTEMPTS = 8;
 const QUICK_DEATH_MS = 1_000;
 const WATCHDOG_INTERVAL_MS = 5_000;
 const STALE_SESSION_MS = 15_000;
+// Consecutive zombie recycles (sessions that produced no events at all)
+// before giving up — a session CAN be born dead on iOS (e.g. started outside
+// a user gesture), and endlessly recycling it just hides the failure.
+const MAX_ZOMBIE_RECYCLES = 2;
 
 export class WebSpeechSource {
   private rec: SpeechRec | null = null;
@@ -144,6 +153,7 @@ export class WebSpeechSource {
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private restartAttempts = 0;
+  private zombieRecycles = 0;
   private sessionStartedAt = 0;
   private lastEventAt = 0;
 
@@ -160,15 +170,49 @@ export class WebSpeechSource {
     this.finalText = '';
     this.active = true;
     this.restartAttempts = 0;
+    this.zombieRecycles = 0;
     this.lastEventAt = Date.now();
     this.spawn();
     this.watchdog = setInterval(() => {
       if (!this.active) return;
       if (Date.now() - this.lastEventAt > STALE_SESSION_MS) {
+        // No events at all for this long = zombie session. Recycle once or
+        // twice, then SURFACE the failure — never spin silently forever.
+        this.zombieRecycles++;
+        if (this.zombieRecycles >= MAX_ZOMBIE_RECYCLES) {
+          this.fail();
+          return;
+        }
         this.lastEventAt = Date.now();
         this.recycle();
       }
     }, WATCHDOG_INTERVAL_MS);
+  }
+
+  /** Recovery is over: tear everything down and tell the caller — a dead mic
+   * must be visible, not a frozen-looking exam. */
+  private fail(): void {
+    this.active = false;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    if (this.watchdog) {
+      clearInterval(this.watchdog);
+      this.watchdog = null;
+    }
+    if (this.rec) {
+      this.rec.onresult = null;
+      this.rec.onerror = null;
+      this.rec.onend = null;
+      try {
+        this.rec.abort();
+      } catch {
+        /* already gone */
+      }
+      this.rec = null;
+    }
+    this.handlers?.onError('restart-failed');
   }
 
   /** Tear down the current instance without firing its handlers, then start a
@@ -192,9 +236,7 @@ export class WebSpeechSource {
     if (!this.active || this.restartTimer) return;
     this.restartAttempts++;
     if (this.restartAttempts > MAX_RESTART_ATTEMPTS) {
-      // Recovery genuinely failed — say so rather than dying silently.
-      this.active = false;
-      this.handlers?.onError('restart-failed');
+      this.fail();
       return;
     }
     this.restartTimer = setTimeout(() => {
@@ -217,6 +259,7 @@ export class WebSpeechSource {
     rec.onresult = (e) => {
       this.lastEventAt = Date.now();
       this.restartAttempts = 0; // producing results ⇒ the session is healthy
+      this.zombieRecycles = 0;
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -230,6 +273,7 @@ export class WebSpeechSource {
 
     rec.onerror = (e) => {
       this.lastEventAt = Date.now();
+      this.zombieRecycles = 0; // any real event means the session isn't a zombie
       // These are normal in continuous use (silence, our own stop) — don't surface.
       if (e.error === 'no-speech' || e.error === 'aborted') return;
       // Fatal errors (Hebrew not supported by this browser, permission denied,
@@ -250,6 +294,7 @@ export class WebSpeechSource {
 
     rec.onend = () => {
       this.lastEventAt = Date.now();
+      this.zombieRecycles = 0; // any real event means the session isn't a zombie
       if (this.rec === rec) this.rec = null;
       if (!this.active) {
         handlers.onEnd();

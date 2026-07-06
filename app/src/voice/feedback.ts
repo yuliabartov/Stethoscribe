@@ -12,14 +12,9 @@
 // filling during an exam. On iOS we skip WebAudio entirely — no capture
 // earcon, but the exam works. (iOS Safari has no vibration API either, so
 // feedback on iPhone is currently visual-only until we have a native shell.)
+import { isIOSDevice } from './speechSource';
 
-/** iPhone / iPod / iPad — including iPadOS 13+ which reports as Mac. */
-function isIOS(): boolean {
-  const ua = navigator.userAgent || '';
-  if (/iPad|iPhone|iPod/.test(ua)) return true;
-  return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
-}
-const AUDIO_DISABLED = isIOS();
+const AUDIO_DISABLED = isIOSDevice();
 
 let ctx: AudioContext | null = null;
 
