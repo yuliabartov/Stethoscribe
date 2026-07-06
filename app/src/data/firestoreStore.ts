@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { INITIAL_TEMPLATES } from '../sampleData';
-import type { CategoryDef, ReportItem, ReviewCategory, TemplateDef } from '../types';
+import type { CategoryDef, ReportItem, ReportStatus, ReviewCategory, TemplateDef } from '../types';
 
 const templatesCol = (uid: string) => collection(db, 'users', uid, 'templates');
 const templateDoc = (uid: string, id: string) => doc(db, 'users', uid, 'templates', id);
@@ -80,11 +80,15 @@ function toTemplateDef(d: QueryDocumentSnapshot<DocumentData>): TemplateDef {
     accent: data.accent,
     soft: data.soft,
     cats: (data.cats as CategoryDef[]) || [],
+    hideEmpty: data.hideEmpty ?? false,
   };
 }
 
 function toReportItem(d: QueryDocumentSnapshot<DocumentData>): ReportItem {
   const data = d.data();
+  // serverTimestamp() is null locally until the write reaches the server; a
+  // Firestore Timestamp exposes toMillis(). Guard both.
+  const ua = data.updatedAt;
   return {
     id: d.id,
     date: data.date,
@@ -92,6 +96,8 @@ function toReportItem(d: QueryDocumentSnapshot<DocumentData>): ReportItem {
     template: data.template,
     templateId: data.templateId ?? null,
     name: data.name ?? null,
+    status: data.status === 'final' ? 'final' : 'draft',
+    updatedAt: ua && typeof ua.toMillis === 'function' ? ua.toMillis() : null,
   };
 }
 
@@ -136,6 +142,7 @@ export async function saveTemplateDoc(uid: string, t: TemplateDef): Promise<void
     accent: t.accent,
     soft: t.soft,
     cats: sanitizeCats(t.cats),
+    hideEmpty: t.hideEmpty ?? false,
   });
 }
 
@@ -156,6 +163,7 @@ interface ReportPayload {
   name: string | null;
   cats: ReviewCategory[];
   unassigned: string[];
+  status: ReportStatus;
 }
 
 /** Creates a new report, or updates an existing one when `id` is given —
@@ -171,6 +179,7 @@ export async function saveReportDoc(uid: string, id: string | null, data: Report
     name: data.name,
     cats: sanitizeReviewCats(data.cats),
     unassigned: data.unassigned,
+    status: data.status,
     updatedAt: serverTimestamp(),
   };
   if (!id) {

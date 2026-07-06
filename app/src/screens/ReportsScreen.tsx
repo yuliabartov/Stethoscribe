@@ -95,7 +95,12 @@ export function ReportsScreen() {
               >
                 <span style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, background: reportAccent(r) }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: color.ink }}>{r.name || reportTplName(r)}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 15.5, fontWeight: 700, color: color.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || reportTplName(r)}</span>
+                    {r.status === 'final' && (
+                      <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 800, letterSpacing: '.3px', textTransform: 'uppercase', color: color.teal, background: color.tealWash, padding: '2px 7px', borderRadius: 6 }}>{t.statusFinal}</span>
+                    )}
+                  </span>
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.muted, marginTop: 2 }}>
                     {r.name ? `${reportTplName(r)} · ` : ''}{r.date} · {r.time}
                   </span>

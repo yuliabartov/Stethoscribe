@@ -177,6 +177,53 @@ export function BuilderScreen() {
           }}
         />
 
+        <button
+          onClick={() => update((s) => ({ builder: s.builder ? { ...s.builder, hideEmpty: !s.builder.hideEmpty } : s.builder }))}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            width: '100%',
+            marginTop: 14,
+            padding: '14px 16px',
+            border: `1.5px solid ${color.borderCream3}`,
+            borderRadius: 16,
+            background: '#fff',
+            textAlign: 'start',
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: color.ink }}>{t.hideEmptyFields}</span>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: color.muted, marginTop: 2 }}>{t.hideEmptyFieldsHint}</span>
+          </span>
+          {/* Track + knob switch; mirrors automatically under RTL via fl* order. */}
+          <span
+            style={{
+              width: 46,
+              height: 28,
+              borderRadius: 999,
+              flexShrink: 0,
+              background: builder.hideEmpty ? color.teal : color.borderCream4,
+              position: 'relative',
+              transition: 'background .2s',
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 3,
+                insetInlineStart: builder.hideEmpty ? 21 : 3,
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                background: '#fff',
+                boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+                transition: 'inset-inline-start .2s',
+              }}
+            />
+          </span>
+        </button>
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '26px 2px 12px' }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: color.ink }}>{t.categories}</h2>
           <span style={{ fontSize: 13, fontWeight: 700, color: color.muted }}>

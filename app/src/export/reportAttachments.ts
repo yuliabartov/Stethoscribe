@@ -18,8 +18,14 @@ export async function buildReportAttachments(input: {
   templateName: string;
   lang: Lang;
   formats: ExportFormats;
+  /** Template setting (spec §12): drop categories with no captured value. */
+  hideEmpty?: boolean;
 }): Promise<ReportAttachment[]> {
-  const { review, templateName, lang, formats } = input;
+  const { templateName, lang, formats, hideEmpty } = input;
+  // Filter once here so both generators emit the identical field set.
+  const review: ReviewState = hideEmpty
+    ? { ...input.review, cats: input.review.cats.filter((c) => (c.override ?? '').trim() !== '') }
+    : input.review;
   const attachments: ReportAttachment[] = [];
   const jobs: Promise<void>[] = [];
   if (formats.word) {

@@ -174,8 +174,10 @@ interface StethoscribeApi {
   setField: (id: string, val: string) => void;
   setExamField: (idx: number, val: string) => void;
   setReportName: (name: string) => void;
+  setReportStatus: (status: 'draft' | 'final') => void;
   openBuilder: (id: string) => void;
   newBuilder: () => void;
+  duplicateTemplate: (id: string) => void;
   moveCat: (idx: number, dir: 1 | -1) => void;
   delCat: (id: string) => void;
   startEditCat: (id: string) => void;
@@ -522,11 +524,11 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         const hh = String(now.getHours()).padStart(2, '0');
         const mm = String(now.getMinutes()).padStart(2, '0');
         const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        saveReportDoc(uid, null, { date, time: hh + ':' + mm, template: templateName, templateId, name: defaultName, cats, unassigned })
+        saveReportDoc(uid, null, { date, time: hh + ':' + mm, template: templateName, templateId, name: defaultName, cats, unassigned, status: 'draft' })
           .then((id) => setState((prev) => prev.review ? { ...prev, review: { ...prev.review, reportId: id } } : prev))
           .catch((err) => console.error('Auto-save report failed', err));
       }
-      return { ...s, screen: 'review', review: { templateName, templateId, name: defaultName, reportId: null, cats, unassigned }, editingId: null, voiceActive: false, dictating: false, dictationError: null };
+      return { ...s, screen: 'review', review: { templateName, templateId, name: defaultName, reportId: null, cats, unassigned, status: 'draft', loadedUpdatedAt: null, dirty: false }, editingId: null, voiceActive: false, dictating: false, dictationError: null };
     });
     notifyTranscript('');
   };
@@ -781,7 +783,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
             if (mark !== undefined && f.start < mark) continue;
             cats[idx] = { ...cats[idx], override: f.value, low: f.low };
           }
-          return { ...s, review: { ...s.review, cats } };
+          return { ...s, review: { ...s.review, cats, dirty: true } };
         });
         // The preview above is now superseded by the committed value; clear
         // the ghost overlay so it doesn't sit duplicated on top of real text.
@@ -845,11 +847,26 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         reportId: report.id,
         cats,
         unassigned,
+        status: report.status,
+        loadedUpdatedAt: report.updatedAt,
+        dirty: false,
       },
       editingId: null,
       nav: 'reports',
       dictating: false,
       dictationError: null,
+    });
+  };
+
+  // Toggle draft/final. Marks the editor dirty so it persists on the next Save
+  // (consistent with how name/field edits persist) and updates the list badge.
+  const setReportStatus = (status: 'draft' | 'final') => {
+    setState((s) => {
+      if (!s.review) return s;
+      const reports = s.review.reportId
+        ? s.reports.map((r) => (r.id === s.review!.reportId ? { ...r, status } : r))
+        : s.reports;
+      return { ...s, review: { ...s.review, status, dirty: true }, reports };
     });
   };
 
@@ -865,13 +882,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       const cats = s.review.cats.map((c) =>
         c.id === catId ? { ...c, override: c.override?.trim() ? c.override + ' ' + seg : seg, low: false } : c,
       );
-      return { ...s, review: { ...s.review, cats, unassigned } };
+      return { ...s, review: { ...s.review, cats, unassigned, dirty: true } };
     });
   };
 
   const dismissUnassigned = (index: number) => {
     setState((s) =>
-      s.review ? { ...s, review: { ...s.review, unassigned: s.review.unassigned.filter((_, i) => i !== index) } } : s,
+      s.review ? { ...s, review: { ...s.review, unassigned: s.review.unassigned.filter((_, i) => i !== index), dirty: true } } : s,
     );
   };
 
@@ -883,7 +900,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       review: s.review
-        ? { ...s.review, cats: s.review.cats.map((c) => (c.id === id ? { ...c, override: val, low: false } : c)) }
+        ? { ...s.review, dirty: true, cats: s.review.cats.map((c) => (c.id === id ? { ...c, override: val, low: false } : c)) }
         : s.review,
     }));
   };
@@ -920,7 +937,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   const setReportName = (name: string) => {
     setState((s) => {
       if (!s.review) return s;
-      const review = { ...s.review, name };
+      const review = { ...s.review, name, dirty: true };
       const reports = s.review.reportId
         ? s.reports.map((r) => (r.id === s.review!.reportId ? { ...r, name: name.trim() || null } : r))
         : s.reports;
@@ -943,7 +960,24 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       min: c.min ?? null,
       max: c.max ?? null,
     }));
-    go('builder', { builder: { id: t.id, name: t.name, cats }, adding: false, editCatId: null, addName: '', addNameHe: '', addOptions: '', addAliases: '', addUnit: '', addMin: '', addMax: '', addType: 'Free text', nav: 'templates' });
+    go('builder', { builder: { id: t.id, name: t.name, cats, hideEmpty: !!t.hideEmpty }, adding: false, editCatId: null, addName: '', addNameHe: '', addOptions: '', addAliases: '', addUnit: '', addMin: '', addMax: '', addType: 'Free text', nav: 'templates' });
+  };
+
+  // Copy a template into a new one (spec §5.1) — fresh id + "(copy)" suffix,
+  // same categories and settings. The subscription reflects the write back.
+  const duplicateTemplate = (id: string) => {
+    const t = tplById(id);
+    const uid = state.user?.uid;
+    if (!t || !uid) return;
+    const suffix = state.lang === 'he' ? DICT.he.copySuffix : DICT.en.copySuffix;
+    const copy: TemplateDef = {
+      ...t,
+      id: 't' + Date.now(),
+      name: t.name + suffix,
+      nameHe: t.nameHe ? t.nameHe + suffix : null,
+      cats: t.cats.map((c) => ({ ...c })),
+    };
+    saveTemplateDoc(uid, copy).catch((err) => console.error('Duplicate template failed', err));
   };
 
   const newBuilder = () => {
@@ -955,6 +989,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
           { id: 'n1', name: 'General Appearance', nameHe: 'מראה כללי', type: 'Free text', options: null, optionsHe: null },
           { id: 'n2', name: 'Findings', nameHe: 'ממצאים', type: 'Free text', options: null, optionsHe: null },
         ],
+        hideEmpty: false,
       },
       adding: false,
       editCatId: null,
@@ -1101,6 +1136,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       accent: existing?.accent || '#8FB6A6',
       soft: existing?.soft || '#DDEAE3',
       cats,
+      hideEmpty: b.hideEmpty,
     };
     saveTemplateDoc(uid, tpl).catch((err) => console.error('Save template failed', err));
     update({ screen: 'templates' });
@@ -1132,6 +1168,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       name: review.name.trim() || null,
       cats: review.cats,
       unassigned: review.unassigned,
+      status: review.status,
     }).catch((err) => console.error('Save report failed', err));
     go('reports', { nav: 'reports' });
   };
@@ -1178,6 +1215,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         templateName: templateDisplayName,
         lang: state.lang,
         formats: state.exportFormats,
+        hideEmpty: tpl?.hideEmpty,
       });
       if (!attachments.length) throw new Error('No format selected');
 
@@ -1204,6 +1242,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         name: review.name.trim() || null,
         cats: review.cats,
         unassigned: review.unassigned,
+        status: review.status,
       })
         .then((id) => setState((s) => s.review ? { ...s, review: { ...s.review, reportId: id } } : s))
         .catch((err) => console.error('Save report failed', err));
@@ -1248,6 +1287,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         templateName: templateDisplayName,
         lang: state.lang,
         formats: state.exportFormats,
+        hideEmpty: tpl?.hideEmpty,
       });
       if (!attachments.length) throw new Error('No format selected');
 
@@ -1308,8 +1348,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     setField,
     setExamField,
     setReportName,
+    setReportStatus,
     openBuilder,
     newBuilder,
+    duplicateTemplate,
     moveCat,
     delCat,
     startEditCat,

@@ -5,10 +5,22 @@ import { useStethoscribe } from '../state/StethoscribeContext';
 import { color } from '../theme';
 
 export function ReviewScreen() {
-  const { state, t, rtl, loc, tplForReport, go, update, setField, setReportName, saveReport, toggleDictation, onLiveTranscript, onPartialFields, assignUnassigned, dismissUnassigned } = useStethoscribe();
+  const { state, t, rtl, loc, tplForReport, go, update, setField, setReportName, setReportStatus, saveReport, reviewFromReport, toggleDictation, onLiveTranscript, onPartialFields, assignUnassigned, dismissUnassigned } = useStethoscribe();
   const review = state.review!;
   // Which unassigned segment has its "add to section" picker open.
   const [assigningIdx, setAssigningIdx] = useState<number | null>(null);
+
+  // "Edited elsewhere" (spec §10): the reports-list subscription keeps
+  // state.reports fresh; if the open report's server updatedAt has advanced
+  // past what we loaded AND we have unsaved local edits, another device
+  // changed it. (No local edits ⇒ nothing to lose ⇒ no notice.) Our own saves
+  // navigate away from review, so they never trip this.
+  const liveItem = review.reportId ? state.reports.find((r) => r.id === review.reportId) : undefined;
+  const conflict =
+    review.dirty &&
+    review.loadedUpdatedAt != null &&
+    liveItem?.updatedAt != null &&
+    liveItem.updatedAt > review.loadedUpdatedAt;
   const liveRef = useRef<HTMLSpanElement>(null);
   // Ghost-text spans per field (keyed by array index, matching how dictation
   // fields are addressed) — updated directly via DOM writes, bypassing React
@@ -69,7 +81,50 @@ export function ReviewScreen() {
             {reviewTemplateName} · {t.today}
           </div>
         </div>
+        {/* Draft ⇄ Final toggle; persists on Save like the other edits. */}
+        <button
+          onClick={() => setReportStatus(review.status === 'final' ? 'draft' : 'final')}
+          aria-pressed={review.status === 'final'}
+          title={review.status === 'final' ? t.reopenDraft : t.markFinal}
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '7px 12px',
+            borderRadius: 999,
+            border: `1.5px solid ${review.status === 'final' ? color.teal : color.borderCream4}`,
+            background: review.status === 'final' ? color.tealWash : '#fff',
+            fontSize: 12.5,
+            fontWeight: 800,
+            color: review.status === 'final' ? color.teal : color.inkSoft,
+          }}
+        >
+          {review.status === 'final' ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color.teal} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          ) : null}
+          {review.status === 'final' ? t.statusFinal : t.statusDraft}
+        </button>
       </div>
+
+      {conflict && (
+        <div style={{ margin: '14px 22px 0', display: 'flex', alignItems: 'center', gap: 10, background: color.warnBg, border: `1.5px solid ${color.warnBorder}`, borderRadius: 14, padding: '11px 14px' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color.warnText} strokeWidth="2.3" strokeLinecap="round" style={{ flexShrink: 0 }}>
+            <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          </svg>
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: color.warnTextDeep, lineHeight: 1.35 }}>{t.editedElsewhere}</span>
+          {liveItem && (
+            <button
+              onClick={() => reviewFromReport(liveItem)}
+              style={{ flexShrink: 0, padding: '7px 12px', border: 'none', borderRadius: 10, background: color.ink, color: '#fff', fontSize: 12.5, fontWeight: 800 }}
+            >
+              {t.reloadLatest}
+            </button>
+          )}
+        </div>
+      )}
 
       <div style={{ margin: '14px 22px 0' }}>
         <div

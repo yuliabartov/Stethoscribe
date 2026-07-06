@@ -29,7 +29,12 @@ export interface TemplateDef {
   accent: string;
   soft: string;
   cats: CategoryDef[];
+  /** When true, categories with no captured value are omitted from the
+   * exported Word/PDF (spec §12 — a per-template setting). */
+  hideEmpty?: boolean;
 }
+
+export type ReportStatus = 'draft' | 'final';
 
 export interface ReportItem {
   id: string;
@@ -42,6 +47,11 @@ export interface ReportItem {
    * legacy docs saved before ids were stored. */
   templateId: string | null;
   name: string | null;
+  /** Draft until the doctor marks it final; legacy docs default to draft. */
+  status: ReportStatus;
+  /** Last-edit server time in ms, or null while a write is still pending /
+   * on legacy docs — used to detect edits made on another device. */
+  updatedAt: number | null;
 }
 
 export type ExamCatStatus = 'pending' | 'active' | 'done';
@@ -119,12 +129,21 @@ export interface ReviewState {
   /** Speech heard during capture that didn't match any category anchor —
    * surfaced for the doctor to file into a field or dismiss (spec §6.3). */
   unassigned: string[];
+  status: ReportStatus;
+  /** updatedAt of the report when it was loaded into the editor; a newer
+   * value arriving via sync while there are unsaved edits means another
+   * device changed it (spec §10 conflict notice). Null for a fresh report. */
+  loadedUpdatedAt: number | null;
+  /** True once the doctor changes anything in the editor — gates the
+   * "edited elsewhere" notice to cases where local edits could be lost. */
+  dirty: boolean;
 }
 
 export interface BuilderState {
   id: string | null;
   name: string;
   cats: BuilderCategory[];
+  hideEmpty: boolean;
 }
 
 export interface ExportFormats {
