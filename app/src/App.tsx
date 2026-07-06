@@ -1,5 +1,6 @@
 import { AppIcon } from './components/AppIcon';
 import { BottomNav } from './components/BottomNav';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LandingPage } from './components/LandingPage';
 import { PhoneFrame } from './components/PhoneFrame';
 import { PrivacyPage } from './components/PrivacyPage';
@@ -70,9 +71,11 @@ function AppShell() {
 
 function App() {
   return (
-    <StethoscribeProvider>
-      <AppShell />
-    </StethoscribeProvider>
+    <ErrorBoundary>
+      <StethoscribeProvider>
+        <AppShell />
+      </StethoscribeProvider>
+    </ErrorBoundary>
   );
 }
 

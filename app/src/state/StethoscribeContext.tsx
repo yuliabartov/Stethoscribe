@@ -91,6 +91,28 @@ function countTokens(s: string): number {
   return s.split(/\s+/).filter(Boolean).length;
 }
 
+/** Where a hardware/browser Back should go from each screen — mirrors the
+ * on-screen BackButton targets so both behave identically. Root screens
+ * (home/signin) map to themselves, i.e. Back stays put rather than leaving
+ * the app (see the popstate guard in the provider). */
+function backTarget(s: AppState): { screen: ScreenName; extra?: Partial<AppState> } {
+  switch (s.screen) {
+    case 'exam':
+      return { screen: 'home', extra: { nav: 'home' } };
+    case 'review':
+      return s.nav === 'reports' ? { screen: 'reports', extra: { nav: 'reports' } } : { screen: 'home', extra: { nav: 'home' } };
+    case 'export':
+      return { screen: 'review' };
+    case 'builder':
+      return { screen: 'templates', extra: { nav: 'templates' } };
+    case 'templates':
+    case 'reports':
+      return { screen: 'home', extra: { nav: 'home' } };
+    default:
+      return { screen: s.screen };
+  }
+}
+
 function applyCapture(cats: ExamCategory[], fields: CapturedField[]): { cats: ExamCategory[]; activeIdx: number } {
   const next = cats.map((c) => ({ ...c }));
   for (const f of fields) {
@@ -172,6 +194,10 @@ const StethoscribeCtx = createContext<StethoscribeApi | null>(null);
 
 export function StethoscribeProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
+  // Latest state readable from stable event handlers (popstate) without
+  // re-subscribing the listener on every render.
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speechRef = useRef<WebSpeechSource | null>(null);
@@ -394,6 +420,37 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     clearTimers();
     update((s) => ({ screen, nav: extra?.nav ?? s.nav, ...extra }));
   };
+
+  // Browser/hardware Back handling. Screen-as-state has no URL history, so
+  // without this the phone Back gesture leaves the app entirely — jarring
+  // mid-exam. We keep one "guard" history entry present while signed in; a
+  // Back press pops it, we route to the current screen's parent (backTarget)
+  // and immediately re-push the guard so the next Back is caught too. From a
+  // root screen Back is a no-op that stays in the app (native-app behavior).
+  const guardUid = state.user?.uid;
+  useEffect(() => {
+    if (guardUid && window.location.pathname !== '/privacy') {
+      window.history.pushState({ ssGuard: true }, '');
+    }
+  }, [guardUid]);
+
+  useEffect(() => {
+    const onPop = () => {
+      // /privacy is a real path rendered outside the signed-in app — let the
+      // browser navigate it normally.
+      if (window.location.pathname === '/privacy') return;
+      const s = stateRef.current;
+      if (!s.user) return; // signed-out: landing page owns its own navigation
+      const target = backTarget(s);
+      if (target.screen !== s.screen) go(target.screen, target.extra);
+      window.history.pushState({ ssGuard: true }, '');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // go/backTarget only touch refs + functional setState, so the first-render
+    // closure stays correct for the app's lifetime — subscribe once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const tplById = (id: string) => state.templates.find((t) => t.id === id);
   const tplByName = (name: string) => state.templates.find((t) => t.name === name) || state.templates[0];
