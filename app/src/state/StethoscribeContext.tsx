@@ -98,8 +98,14 @@ function countTokens(s: string): number {
 function backTarget(s: AppState): { screen: ScreenName; extra?: Partial<AppState> } {
   switch (s.screen) {
     case 'exam':
-      return { screen: 'home', extra: { nav: 'home' } };
+      // Back mid-exam would silently stop the mic and drop everything the
+      // doctor has said so far. Force the explicit End Exam button instead
+      // (spec §5.2 hands-free intent). An edge-swipe on iOS Safari can't
+      // accidentally kill the session anymore.
+      return { screen: s.screen };
     case 'review':
+      // Same protection while dictation is live.
+      if (s.dictating) return { screen: s.screen };
       return s.nav === 'reports' ? { screen: 'reports', extra: { nav: 'reports' } } : { screen: 'home', extra: { nav: 'home' } };
     case 'export':
       return { screen: 'review' };

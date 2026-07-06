@@ -4,10 +4,27 @@
 // Earcons are synthesized with WebAudio — no audio assets, nothing fetched.
 // Browsers only allow an AudioContext to produce sound after a user gesture,
 // so primeAudioFeedback() is called from the Start Exam / dictation taps.
+//
+// iOS EXCEPTION: WebAudio and SpeechRecognition share one AVAudioSession on
+// iOS Safari. Instantiating an AudioContext (or scheduling a tone) forces
+// the session into a category that silently drops SpeechRecognition results,
+// which was stalling the live "hearing…" text and stopping fields from
+// filling during an exam. On iOS we skip WebAudio entirely — no capture
+// earcon, but the exam works. (iOS Safari has no vibration API either, so
+// feedback on iPhone is currently visual-only until we have a native shell.)
+
+/** iPhone / iPod / iPad — including iPadOS 13+ which reports as Mac. */
+function isIOS(): boolean {
+  const ua = navigator.userAgent || '';
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
+}
+const AUDIO_DISABLED = isIOS();
 
 let ctx: AudioContext | null = null;
 
 export function primeAudioFeedback(): void {
+  if (AUDIO_DISABLED) return;
   try {
     if (!ctx) ctx = new AudioContext();
     if (ctx.state === 'suspended') void ctx.resume();
@@ -17,7 +34,7 @@ export function primeAudioFeedback(): void {
 }
 
 function tone(freq: number, at: number, dur: number, type: OscillatorType, peak: number): void {
-  if (!ctx || ctx.state !== 'running') return;
+  if (AUDIO_DISABLED || !ctx || ctx.state !== 'running') return;
   const t0 = ctx.currentTime + at;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
