@@ -5,8 +5,11 @@
 // in behind this same shape — the capture engine downstream never changes.
 
 export interface SpeechHandlers {
-  /** finalText = full accumulated finalized transcript; interim = in-progress words. */
-  onTranscript: (finalText: string, interim: string) => void;
+  /** finalText = full accumulated finalized transcript; interim = in-progress
+   * words. altFinals (optional) = full-transcript variants where only the most
+   * recent finalized utterance is swapped for the recognizer's lower-ranked
+   * hypotheses — used downstream to disambiguate Number/List captures. */
+  onTranscript: (finalText: string, interim: string, altFinals?: string[]) => void;
   onError: (code: string) => void;
   onEnd: () => void;
 }
@@ -17,7 +20,8 @@ interface SRAlternative {
 }
 interface SRResult {
   isFinal: boolean;
-  0: SRAlternative;
+  length: number;
+  [index: number]: SRAlternative;
 }
 interface SRResultList {
   length: number;
@@ -59,6 +63,12 @@ export function isMobileDevice(): boolean {
   if (/android|iphone|ipad|ipod/i.test(ua)) return true;
   // iPadOS reports as "Mac" but exposes touch points.
   return /Mac/.test(ua) && navigator.maxTouchPoints > 1;
+}
+
+/** Android phone/tablet detection — used to pick the smoother same-instance
+ * restart strategy (see SpeechSourceOptions.restartMode). */
+export function isAndroidDevice(): boolean {
+  return /android/i.test(navigator.userAgent || '');
 }
 
 /** iPhone/iPad detection (iPadOS 13+ reports as Mac but exposes touch). */
@@ -135,6 +145,13 @@ export async function ensureMicPermission(): Promise<'granted' | 'denied' | 'uns
 //    seconds; recycling during real silence is harmless — the accumulated
 //    transcript lives on this object, not on the instance).
 const RESTART_DELAY_MS = 250;
+// Android same-instance restarts reuse the warmed-up recognizer, so the gap only
+// needs to be long enough to clear the just-ended session — not the full
+// fresh-instance delay.
+const SAME_RESTART_DELAY_MS = 30;
+// Lower-ranked hypotheses to request per result — the 2nd/3rd are fed into
+// Number/List disambiguation downstream (see processTranscriptMulti).
+const MAX_ALTERNATIVES = 3;
 const MAX_RESTART_ATTEMPTS = 8;
 const QUICK_DEATH_MS = 1_000;
 const WATCHDOG_INTERVAL_MS = 5_000;
@@ -149,6 +166,12 @@ export interface SpeechSourceOptions {
    * home-screen (standalone) attempts pass 1, so if recognition is
    * platform-restricted there the doctor learns in ~20s, not ~40s. */
   zombieStrikes?: number;
+  /** How to restart after a session ends normally. 'fresh' spawns a new
+   * recognizer instance each time — required on iOS, where restarting the same
+   * instance dies silently. 'same' re-arms the warmed-up instance with a tiny
+   * gap — right for Android, where the fresh-instance + 250ms delay drops the
+   * first words the doctor says after every pause. Default 'fresh'. */
+  restartMode?: 'fresh' | 'same';
 }
 
 export class WebSpeechSource {
@@ -162,12 +185,14 @@ export class WebSpeechSource {
   private restartAttempts = 0;
   private zombieRecycles = 0;
   private zombieStrikeLimit: number;
+  private restartMode: 'fresh' | 'same';
   private sessionStartedAt = 0;
   private lastEventAt = 0;
 
   constructor(lang: string, opts?: SpeechSourceOptions) {
     this.lang = lang;
     this.zombieStrikeLimit = opts?.zombieStrikes ?? MAX_ZOMBIE_RECYCLES;
+    this.restartMode = opts?.restartMode ?? 'fresh';
   }
 
   start(handlers: SpeechHandlers): void {
@@ -241,6 +266,30 @@ export class WebSpeechSource {
     this.spawn();
   }
 
+  /** Android normal-restart path: re-arm the SAME (warmed-up) recognizer after a
+   * tiny delay instead of spawning a fresh instance. Falls back to a fresh
+   * instance if the browser refuses to restart the just-ended session. */
+  private restartSame(rec: SpeechRec): void {
+    if (!this.active) return;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      // Superseded while we waited (e.g. the watchdog recycled to a fresh one).
+      if (!this.active || this.rec !== rec) return;
+      this.sessionStartedAt = Date.now();
+      this.lastEventAt = Date.now(); // don't let the watchdog count the restart gap as stale
+      try {
+        rec.start();
+      } catch {
+        // Raced the ended session's teardown — spawn a fresh instance instead.
+        this.recycle();
+      }
+    }, SAME_RESTART_DELAY_MS);
+  }
+
   private scheduleRestart(): void {
     if (!this.active || this.restartTimer) return;
     this.restartAttempts++;
@@ -263,21 +312,45 @@ export class WebSpeechSource {
     rec.lang = this.lang;
     rec.continuous = true;
     rec.interimResults = true;
-    rec.maxAlternatives = 1;
+    rec.maxAlternatives = MAX_ALTERNATIVES;
 
     rec.onresult = (e) => {
       this.lastEventAt = Date.now();
       this.restartAttempts = 0; // producing results ⇒ the session is healthy
       this.zombieRecycles = 0;
       let interim = '';
+      let sawFinal = false;
+      let lastSegAlts: string[] = [];
+      let lastSegPrefix = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         const text = r[0].transcript.trim();
         if (!text) continue;
-        if (r.isFinal) this.finalText += (this.finalText ? ' ' : '') + text;
-        else interim += text + ' ';
+        if (r.isFinal) {
+          // Snapshot this utterance's alternatives + the transcript BEFORE it, so
+          // we can offer full-transcript variants that differ only in this last
+          // utterance. A burst of finals keeps only the newest (the older ones
+          // are already folded into finalText and are less useful to revisit).
+          lastSegPrefix = this.finalText;
+          lastSegAlts = [];
+          const n = Math.min(r.length || 1, MAX_ALTERNATIVES);
+          for (let k = 0; k < n; k++) {
+            const alt = r[k]?.transcript?.trim();
+            if (alt) lastSegAlts.push(alt);
+          }
+          this.finalText += (this.finalText ? ' ' : '') + text;
+          sawFinal = true;
+        } else {
+          interim += text + ' ';
+        }
       }
-      handlers.onTranscript(this.finalText, interim.trim());
+      // Offer the lower-ranked hypotheses (skip index 0 — that's the primary
+      // already in finalText) as full-transcript variants.
+      let altFinals: string[] | undefined;
+      if (sawFinal && lastSegAlts.length > 1) {
+        altFinals = lastSegAlts.slice(1).map((a) => (lastSegPrefix ? lastSegPrefix + ' ' + a : a));
+      }
+      handlers.onTranscript(this.finalText, interim.trim(), altFinals);
     };
 
     rec.onerror = (e) => {
@@ -304,15 +377,27 @@ export class WebSpeechSource {
     rec.onend = () => {
       this.lastEventAt = Date.now();
       this.zombieRecycles = 0; // any real event means the session isn't a zombie
-      if (this.rec === rec) this.rec = null;
+      const wasCurrent = this.rec === rec;
       if (!this.active) {
+        if (wasCurrent) this.rec = null;
         handlers.onEnd();
         return;
       }
       // A session that lived a while ended normally (silence / engine
       // rotation) — that shouldn't eat into the retry budget. Only instant
       // deaths count, so a start-fail loop still exhausts and surfaces.
-      if (Date.now() - this.sessionStartedAt >= QUICK_DEATH_MS) this.restartAttempts = 0;
+      const livedLongEnough = Date.now() - this.sessionStartedAt >= QUICK_DEATH_MS;
+      if (livedLongEnough) this.restartAttempts = 0;
+      // Android: re-arm the SAME warmed-up recognizer (tiny gap) rather than
+      // spawning a fresh instance after 250ms — the fresh-instance dance exists
+      // only because iOS same-instance restarts die silently, and on Android it
+      // drops the first words after every pause. A quick death still falls
+      // through to the fresh-instance path so a real failure loop surfaces.
+      if (this.restartMode === 'same' && wasCurrent && livedLongEnough) {
+        this.restartSame(rec);
+        return;
+      }
+      if (wasCurrent) this.rec = null;
       this.scheduleRestart();
     };
 

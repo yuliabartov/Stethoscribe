@@ -17,8 +17,8 @@ import { buildReportAttachments } from '../export/reportAttachments';
 import { DICT, loc as locImpl } from '../i18n';
 import { isValidEmail } from '../mail/emailAddress';
 import { FATAL_MIC_ERRORS, playCaptureFeedback, playFailureFeedback, primeAudioFeedback } from '../voice/feedback';
-import { normalize, processTranscript, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
-import { WebSpeechSource, ensureMicPermission, isIOSDevice, isIOSStandalone, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
+import { normalize, processTranscript, processTranscriptMulti, type CapturedField, type CompiledCategory, type CompiledOption } from '../voice/matchEngine';
+import { WebSpeechSource, ensureMicPermission, isAndroidDevice, isIOSDevice, isIOSStandalone, isMobileDevice, isSpeechSupported } from '../voice/speechSource';
 import { keepScreenAwake, releaseScreenWakeLock } from '../voice/wakeLock';
 import type { AppState, AuthUser, BuilderCategory, CategoryDef, CategoryType, ExamCatStatus, ExamCategory, NavName, ReportItem, ReviewCategory, ScreenName, TemplateDef } from '../types';
 
@@ -64,6 +64,8 @@ const initialState: AppState = {
   downloading: false,
   search: '',
   sort: 'recent',
+  debug: false,
+  debugInfo: null,
 };
 
 function compileCats(cats: CategoryDef[]): CompiledCategory[] {
@@ -90,6 +92,15 @@ function compileCats(cats: CategoryDef[]): CompiledCategory[] {
 function countTokens(s: string): number {
   return s.split(/\s+/).filter(Boolean).length;
 }
+
+// Bounded-reparse window: keep the this-many most-recently-mentioned fields
+// "live" (re-scanned every phrase) and settle everything before them. Settled
+// fields keep their captured values in state (applyCapture only touches fields
+// it's handed), so this never drops a finding — it just stops the per-phrase
+// anchor scan from re-walking the entire transcript (and from spuriously
+// re-matching long-ago speech) on a long exam. Generous, so short exams (fewer
+// distinct fields than this) behave exactly as before: nothing is ever settled.
+const EXAM_LIVE_ANCHORS = 5;
 
 /** Where a hardware/browser Back should go from each screen — mirrors the
  * on-screen BackButton targets so both behave identically. Root screens
@@ -216,6 +227,15 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   const compiledRef = useRef<CompiledCategory[]>([]);
   const lastFinalRef = useRef('');
   const lastUiAtRef = useRef(0);
+  // The heavy re-parse + capture setState is deferred to the next animation
+  // frame (coalescing bursts) so a finalized phrase never lands synchronously in
+  // the middle of a tap or scroll on the phone. Holds the pending transcript and
+  // the scheduled frame id.
+  const examParseRafRef = useRef<number | null>(null);
+  const pendingFinalRef = useRef<string | null>(null);
+  // Lower-ranked hypotheses of the latest utterance, held alongside the pending
+  // transcript for the deferred parse (see processTranscriptMulti).
+  const pendingAltsRef = useRef<string[]>([]);
   // Fields the doctor fixed (or cleared) by hand while voice was capturing,
   // mapped to the finalized-transcript token count at the moment of the edit.
   // The whole transcript is re-segmented on every speech result, so without
@@ -231,6 +251,11 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   // into review.unassigned for the doctor to file or dismiss.
   const examUnassignedBaseRef = useRef<string[]>([]);
   const examSessionUnassignedRef = useRef<string[]>([]);
+  // Bounded-reparse checkpoint (see EXAM_LIVE_ANCHORS): token index where the
+  // live re-scan window begins, and the unmatched leading speech from the region
+  // already settled behind it (so it isn't lost when it scrolls out of the window).
+  const settledExamOffsetRef = useRef(0);
+  const examSettledUnassignedRef = useRef<string[]>([]);
   // Same for report-editor dictation; folded into review.unassigned on stop.
   const dictationUnassignedRef = useRef<string[]>([]);
   // Last value voice committed per field — detects genuinely NEW captures so
@@ -277,6 +302,12 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     tickRef.current = null;
     clockRef.current = null;
     voiceEpochRef.current++;
+    if (examParseRafRef.current != null) {
+      cancelAnimationFrame(examParseRafRef.current);
+      examParseRafRef.current = null;
+    }
+    pendingFinalRef.current = null;
+    pendingAltsRef.current = [];
     if (speechRef.current) {
       speechRef.current.stop();
       speechRef.current = null;
@@ -573,14 +604,20 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     // into the base so the new session's list doesn't overwrite them.
     examUnassignedBaseRef.current = examUnassignedBaseRef.current.concat(examSessionUnassignedRef.current);
     examSessionUnassignedRef.current = [];
+    // Fresh transcript ⇒ the bounded-reparse window restarts at the top.
+    settledExamOffsetRef.current = 0;
+    examSettledUnassignedRef.current = [];
     const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
     // Standalone (home-screen) attempts get one zombie strike, not two — if
     // recognition is platform-restricted there, say so in ~20s, not ~40s.
     const standalone = isIOSStandalone();
-    const source = new WebSpeechSource(lang, standalone ? { zombieStrikes: 1 } : undefined);
+    const source = new WebSpeechSource(lang, {
+      ...(standalone ? { zombieStrikes: 1 } : {}),
+      ...(isAndroidDevice() ? { restartMode: 'same' as const } : {}),
+    });
     speechRef.current = source;
     source.start({
-      onTranscript: (finalText, interim) => {
+      onTranscript: (finalText, interim, altFinals) => {
         // Interim results fire many times per second. Re-parsing the whole
         // transcript + re-rendering the app on each one froze scrolling/taps on
         // the phone, so: throttle the cheap "hearing…" updates, and only run the
@@ -595,37 +632,78 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         notifyTranscript(heard);
         if (!finalChanged) return;
         lastFinalRef.current = finalText;
-        const result = processTranscript(finalText, compiledRef.current);
-        examSessionUnassignedRef.current = result.unassigned;
-        // Audible/tactile confirmation for genuinely new captures — the doctor
-        // isn't looking at the screen. Detected against the last value voice
-        // committed per field, honoring the manual-edit marks.
-        let newCapture = false;
-        for (const f of result.fields) {
-          if (!f.value) continue;
-          const editMark = examEditMarksRef.current.get(Number(f.id));
-          if (editMark !== undefined && f.start < editMark) continue;
-          if (lastCaptureValuesRef.current.get(f.id) !== f.value) {
-            lastCaptureValuesRef.current.set(f.id, f.value);
-            newCapture = true;
+        // Defer the O(transcript) re-parse + capture setState to the next frame
+        // so a finalized phrase never lands synchronously in the middle of a tap
+        // or scroll. Bursts coalesce: keep only the latest transcript, run once.
+        pendingFinalRef.current = finalText;
+        pendingAltsRef.current = altFinals ?? [];
+        if (examParseRafRef.current != null) return;
+        examParseRafRef.current = requestAnimationFrame(() => {
+          examParseRafRef.current = null;
+          const text = pendingFinalRef.current;
+          const alts = pendingAltsRef.current;
+          pendingFinalRef.current = null;
+          pendingAltsRef.current = [];
+          if (text == null) return;
+          // Only re-scan the live tail (see EXAM_LIVE_ANCHORS); fields settled
+          // behind the offset keep their values in state. result.fields carry
+          // absolute token starts, so edit marks still line up. Alternatives
+          // upgrade uncertain Number/List captures (see processTranscriptMulti).
+          const from = settledExamOffsetRef.current;
+          const result = processTranscriptMulti(text, alts, compiledRef.current, from);
+          examSessionUnassignedRef.current = examSettledUnassignedRef.current.concat(result.unassigned);
+          // Audible/tactile confirmation for genuinely new captures — the doctor
+          // isn't looking at the screen. Detected against the last value voice
+          // committed per field, honoring the manual-edit marks.
+          let newCapture = false;
+          for (const f of result.fields) {
+            if (!f.value) continue;
+            const editMark = examEditMarksRef.current.get(Number(f.id));
+            if (editMark !== undefined && f.start < editMark) continue;
+            if (lastCaptureValuesRef.current.get(f.id) !== f.value) {
+              lastCaptureValuesRef.current.set(f.id, f.value);
+              newCapture = true;
+            }
           }
-        }
-        if (newCapture) playCaptureFeedback();
-        setState((s) => {
-          if (!s.examCats || s.screen !== 'exam') return s;
-          // Don't let voice clobber the field the doctor is manually editing,
-          // nor re-apply utterances older than a manual fix (examEditMarksRef).
-          const editingIdx = s.editingId?.startsWith('e') ? Number(s.editingId.slice(1)) : -1;
-          const fields = result.fields.filter((f) => {
-            const idx = Number(f.id);
-            if (idx === editingIdx) return false;
-            const mark = examEditMarksRef.current.get(idx);
-            return mark === undefined || f.start >= mark;
+          if (newCapture) playCaptureFeedback();
+          setState((s) => {
+            if (!s.examCats || s.screen !== 'exam') return s;
+            // Don't let voice clobber the field the doctor is manually editing,
+            // nor re-apply utterances older than a manual fix (examEditMarksRef).
+            const editingIdx = s.editingId?.startsWith('e') ? Number(s.editingId.slice(1)) : -1;
+            const fields = result.fields.filter((f) => {
+              const idx = Number(f.id);
+              if (idx === editingIdx) return false;
+              const mark = examEditMarksRef.current.get(idx);
+              return mark === undefined || f.start >= mark;
+            });
+            const applied = applyCapture(s.examCats, fields);
+            // Diagnostic overlay (opt-in): record the raw transcript, unmatched
+            // speech, and the alternative hypotheses this parse considered.
+            const debugInfo = s.debug ? { raw: text, unassigned: examSessionUnassignedRef.current.slice(), alts } : s.debugInfo;
+            return { ...s, examCats: applied.cats, activeIdx: applied.activeIdx, debugInfo };
           });
-          const applied = applyCapture(s.examCats, fields);
-          return { ...s, examCats: applied.cats, activeIdx: applied.activeIdx };
+          // Checkpoint: once more than EXAM_LIVE_ANCHORS distinct fields have been
+          // captured, settle everything before the Nth-most-recent anchor. Cutting
+          // ON an anchor boundary (never mid-value) means the still-growing last
+          // field is always kept live; earlier fields already committed their
+          // values via applyCapture above.
+          const starts = result.fields.map((f) => f.start).sort((a, b) => a - b);
+          if (starts.length > EXAM_LIVE_ANCHORS) {
+            const newOffset = starts[starts.length - EXAM_LIVE_ANCHORS];
+            if (newOffset > from) {
+              // The slice leaving the window may hold unmatched leading speech
+              // (only the very first settle does — later windows start on an
+              // anchor); preserve it so the unassigned list stays complete.
+              const allTokens = text.split(/\s+/).filter(Boolean);
+              const settledSlice = allTokens.slice(from, newOffset).join(' ');
+              const settledUn = processTranscript(settledSlice, compiledRef.current).unassigned;
+              if (settledUn.length) examSettledUnassignedRef.current = examSettledUnassignedRef.current.concat(settledUn);
+              settledExamOffsetRef.current = newOffset;
+            }
+          }
+          if (result.stop) endExam();
         });
-        if (result.stop) endExam();
       },
       onError: (code) => {
         // In the home-screen app, a dead/refused session means the platform
@@ -663,6 +741,8 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     clearTimers();
     examUnassignedBaseRef.current = [];
     examSessionUnassignedRef.current = [];
+    settledExamOffsetRef.current = 0;
+    examSettledUnassignedRef.current = [];
     lastCaptureValuesRef.current.clear();
     // Voice exam is phone-only (spec §9). On a phone we do real voice (or show a
     // clear "unsupported browser" message); desktop keeps the simulated demo.
@@ -754,7 +834,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
     // Same standalone handling as the exam (see startVoice).
     const standalone = isIOSStandalone();
-    const source = new WebSpeechSource(lang, standalone ? { zombieStrikes: 1 } : undefined);
+    const source = new WebSpeechSource(lang, {
+      ...(standalone ? { zombieStrikes: 1 } : {}),
+      ...(isAndroidDevice() ? { restartMode: 'same' as const } : {}),
+    });
     dictationRef.current = source;
     source.start({
       onTranscript: (finalText, interim) => {

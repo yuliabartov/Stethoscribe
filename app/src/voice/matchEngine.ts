@@ -333,13 +333,22 @@ export function isStopKeyword(text: string): boolean {
 }
 
 /**
- * Process the full accumulated transcript against the template's categories.
- * Re-segmenting the whole transcript each time keeps the logic idempotent and
- * robust to interim/duplicate speech results.
+ * Process the accumulated transcript against the template's categories.
+ * Re-segmenting keeps the logic idempotent and robust to interim/duplicate
+ * speech results.
+ *
+ * `fromToken` restricts anchor scanning to the transcript suffix starting at
+ * that whitespace-token index — the caller uses this to keep the per-phrase
+ * reparse bounded on long exams (settled earlier fields already live in state).
+ * Returned `start` indices stay ABSOLUTE (offset back into the full transcript)
+ * so manual-edit marks keep working across the window boundary. Stop-keyword
+ * detection always runs on the full text, never the window. With the default
+ * `fromToken = 0` this is identical to processing the whole transcript.
  */
-export function processTranscript(fullText: string, cats: CompiledCategory[]): ProcessResult {
+export function processTranscript(fullText: string, cats: CompiledCategory[], fromToken = 0): ProcessResult {
   const stop = isStopKeyword(fullText);
-  const original = fullText.split(/\s+/).filter(Boolean);
+  const allTokens = fullText.split(/\s+/).filter(Boolean);
+  const original = fromToken > 0 ? allTokens.slice(fromToken) : allTokens;
   const norm = original.map(normalizeToken);
   const hits = findHits(norm, cats);
 
@@ -367,8 +376,48 @@ export function processTranscript(fullText: string, cats: CompiledCategory[]): P
     // field is left as-is rather than overwritten with an invalid value.
     if (!captured) continue;
     // Last mention wins, so a doctor can simply re-state a field to correct it.
-    fields.set(cat.id, { ...captured, start: hit.start });
+    // start is offset back to the full-transcript coordinate space.
+    fields.set(cat.id, { ...captured, start: hit.start + fromToken });
   }
 
   return { fields: [...fields.values()], unassigned: unassigned.filter(Boolean), stop };
+}
+
+/**
+ * Like processTranscript, but also considers alternative transcripts of the most
+ * recent utterance — the recognizer's 2nd/3rd-ranked hypotheses (spec §14.2).
+ *
+ * Deliberately narrow, so it can only ever help: for Number and List fields —
+ * where the target is a finite value the engine often gets on a lower-ranked
+ * guess ("wheeze" under a mis-heard primary) — a CONFIDENT alternative capture
+ * fills in a field the primary transcript missed, or upgrades one the primary
+ * was unsure about. It never downgrades a confident primary, never touches Free
+ * text (alternatives there just inject noise), and keeps the primary transcript's
+ * token positions so manual-edit marks stay aligned. `unassigned`/`stop` come
+ * from the primary. With no alternatives it's identical to processTranscript.
+ */
+export function processTranscriptMulti(
+  primary: string,
+  alternatives: string[],
+  cats: CompiledCategory[],
+  fromToken = 0,
+): ProcessResult {
+  const base = processTranscript(primary, cats, fromToken);
+  if (!alternatives.length) return base;
+
+  const byId = new Map(base.fields.map((f) => [f.id, { ...f }]));
+  const typeById = new Map(cats.map((c) => [c.id, c.type]));
+
+  for (const alt of alternatives) {
+    if (!alt) continue;
+    for (const af of processTranscript(alt, cats, fromToken).fields) {
+      const type = typeById.get(af.id);
+      if (type !== 'Number' && type !== 'List') continue;
+      if (af.low || !af.value) continue; // only a confident alternative may win
+      const bf = byId.get(af.id);
+      if (!bf) byId.set(af.id, { ...af }); // primary missed this field entirely
+      else if (bf.low) byId.set(af.id, { ...bf, value: af.value, low: false }); // upgrade, keep primary's start
+    }
+  }
+  return { fields: [...byId.values()], unassigned: base.unassigned, stop: base.stop };
 }

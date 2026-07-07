@@ -13,15 +13,17 @@ export const INITIAL_TEMPLATES: TemplateDef[] = [
       {
         name: 'General Appearance',
         nameHe: 'מראה כללי',
+        aliases: ['appearance', 'general appearance', 'מראה', 'מצב כללי'],
         type: 'Free text',
         sample: 'Alert, well-nourished, no acute distress',
         sampleHe: 'ערני, מוזן היטב, ללא מצוקה חריפה',
       },
-      { name: 'Temperature', nameHe: 'חום', type: 'Number', sample: '37.2 °C', sampleHe: '37.2 °C' },
-      { name: 'Heart Rate', nameHe: 'דופק', type: 'Number', sample: '78 bpm', sampleHe: '78 פעימות/דק׳' },
+      { name: 'Temperature', nameHe: 'חום', aliases: ['temp', 'temperature', 'טמפרטורה'], type: 'Number', sample: '37.2 °C', sampleHe: '37.2 °C' },
+      { name: 'Heart Rate', nameHe: 'דופק', aliases: ['pulse', 'heartrate', 'קצב לב'], type: 'Number', sample: '78 bpm', sampleHe: '78 פעימות/דק׳' },
       {
         name: 'Blood Pressure',
         nameHe: 'לחץ דם',
+        aliases: ['bp', 'pressure', 'לחץ'],
         type: 'Free text',
         sample: '122/78 mmHg',
         sampleHe: '122/78 mmHg',
@@ -30,6 +32,7 @@ export const INITIAL_TEMPLATES: TemplateDef[] = [
       {
         name: 'Lungs',
         nameHe: 'ריאות',
+        aliases: ['lungs', 'chest', 'breath sounds', 'חזה', 'נשימות'],
         type: 'List',
         options: ['Clear', 'Wheeze', 'Crackles'],
         optionsHe: ['נקיות', 'צפצופים', 'חרחורים'],
@@ -39,6 +42,7 @@ export const INITIAL_TEMPLATES: TemplateDef[] = [
       {
         name: 'Skin',
         nameHe: 'עור',
+        aliases: ['skin', 'derm', 'העור'],
         type: 'Free text',
         sample: 'Warm and dry, no rash',
         sampleHe: 'חמים ויבש, ללא פריחה',
@@ -47,6 +51,7 @@ export const INITIAL_TEMPLATES: TemplateDef[] = [
       {
         name: 'Notes',
         nameHe: 'הערות',
+        aliases: ['note', 'comments', 'הערה'],
         type: 'Free text',
         sample: 'Reports mild fatigue past week',
         sampleHe: 'מדווח על עייפות קלה בשבוע האחרון',

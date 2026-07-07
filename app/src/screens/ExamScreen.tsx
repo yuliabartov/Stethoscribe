@@ -112,6 +112,60 @@ const ExamFields = memo(function ExamFields({
   );
 });
 
+// Opt-in diagnostic overlay (toggled by tapping the "RECORDING · time" label).
+// Shows the raw recognizer transcript against what the match engine captured, so
+// a voice miss can be reported precisely ("said X, engine heard Y, matched Z").
+// Text is selectable for long-press copy on a phone. Its own component so the
+// per-second timer re-render doesn't churn it — it only re-renders on new state.
+function DebugPanel() {
+  const { state, update } = useStethoscribe();
+  const info = state.debugInfo;
+  const matched = (state.examCats || [])
+    .map((c) => ({ name: locField(state.lang, c, 'name'), value: c.override, low: c.low && !!c.override }))
+    .filter((m) => m.value != null && m.value !== '');
+  const mono = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  const row: CSSProperties = { userSelect: 'text', WebkitUserSelect: 'text', fontFamily: mono, fontSize: 11.5, lineHeight: 1.5, color: color.ink, wordBreak: 'break-word', direction: 'ltr', textAlign: 'left' };
+  const label: CSSProperties = { fontSize: 10, fontWeight: 800, letterSpacing: '.6px', color: color.chevron3, textTransform: 'uppercase', marginTop: 10 };
+  return (
+    <div style={{ marginTop: 14, padding: '14px 15px', borderRadius: 16, background: '#FFF7E6', border: `1.5px dashed ${color.warnBorder}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: color.warnTextDeep }}>◇ Voice diagnostics</span>
+        <button onClick={() => update({ debug: false })} style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 800, color: color.chevron3, cursor: 'pointer' }}>Hide</button>
+      </div>
+
+      <div style={label}>Raw transcript (heard)</div>
+      <div style={row}>{info?.raw?.trim() || '—'}</div>
+
+      <div style={label}>Matched → field</div>
+      {matched.length ? (
+        matched.map((m, i) => (
+          <div key={i} style={row}>
+            {m.name}: <b>{m.value}</b>{m.low ? ' ⚠low' : ''}
+          </div>
+        ))
+      ) : (
+        <div style={row}>—</div>
+      )}
+
+      {!!info?.unassigned?.length && (
+        <>
+          <div style={label}>Unmatched speech</div>
+          <div style={row}>{info.unassigned.join(' · ')}</div>
+        </>
+      )}
+
+      {!!info?.alts?.length && (
+        <>
+          <div style={label}>Alternative hypotheses</div>
+          {info.alts.map((a, i) => (
+            <div key={i} style={row}>{a}</div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function ExamScreen() {
   const { state, t, rtl, loc, tplForReport, fmt, go, endExam, togglePause, onLiveTranscript, setExamField, update } = useStethoscribe();
   const exam = state.exam!;
@@ -150,7 +204,13 @@ export function ExamScreen() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <BackButton onClick={() => go('home', { nav: 'home' })} dark />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: color.examRecordingLabel, letterSpacing: '.3px', textTransform: 'uppercase' }}>
+              {/* Tapping the recording label toggles the diagnostic overlay
+                  (raw transcript vs. matched) — a discreet handle for reporting
+                  voice misses without cluttering the normal exam UI. */}
+              <div
+                onClick={() => update({ debug: !state.debug })}
+                style={{ fontSize: 13, fontWeight: 700, color: color.examRecordingLabel, letterSpacing: '.3px', textTransform: 'uppercase', cursor: 'pointer' }}
+              >
                 {state.paused ? t.paused : t.recording} · {fmt(state.elapsed)}
               </div>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginTop: 2 }}>{examTpl ? loc(examTpl, 'name') : exam.templateName}</div>
@@ -295,6 +355,7 @@ export function ExamScreen() {
             onSetField={onSetField}
             onClose={onClose}
           />
+          {state.debug && <DebugPanel />}
         </div>
       </div>
       <div style={{ padding: '14px 22px calc(18px + env(safe-area-inset-bottom))', borderTop: `1px solid ${color.borderCream}`, background: color.cream }}>

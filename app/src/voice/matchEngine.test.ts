@@ -9,6 +9,7 @@ import {
   normalizeToken,
   parseSpokenNumber,
   processTranscript,
+  processTranscriptMulti,
   similarity,
   type CompiledCategory,
 } from './matchEngine';
@@ -175,5 +176,100 @@ describe('processTranscript', () => {
     const f = r.fields.find((x) => x.id === '0');
     expect(f?.value).toContain('diaphoresis');
     expect(f?.low).toBe(true);
+  });
+});
+
+describe('processTranscript windowing (fromToken)', () => {
+  const cats: CompiledCategory[] = [
+    cat('0', ['General Appearance']),
+    cat('1', ['Heart Rate'], { type: 'Number' }),
+    cat('2', ['Blood Pressure']),
+  ];
+  // tokens: general(0) appearance(1) alert(2) and(3) oriented(4)
+  //         heart(5) rate(6) 78(7) blood(8) pressure(9) 120(10) over(11) 80(12)
+  const text = 'general appearance alert and oriented heart rate 78 blood pressure 120 over 80';
+
+  it('with fromToken=0 is identical to the full parse', () => {
+    expect(processTranscript(text, cats, 0)).toEqual(processTranscript(text, cats));
+  });
+
+  it('returns only fields whose anchor is in the window, with ABSOLUTE token starts', () => {
+    const r = processTranscript(text, cats, 5); // window begins at "heart rate…"
+    const byId = new Map(r.fields.map((f) => [f.id, f]));
+    expect(byId.has('0')).toBe(false); // General Appearance settled out of the window
+    expect(byId.get('1')).toMatchObject({ value: '78', start: 5 }); // absolute, not window-relative 0
+    expect(byId.get('2')?.value).toMatch(/120/);
+    expect(byId.get('2')?.start).toBe(8);
+  });
+
+  it('windowed live fields exactly equal their full-parse counterparts', () => {
+    const full = new Map(processTranscript(text, cats).fields.map((f) => [f.id, f]));
+    for (const f of processTranscript(text, cats, 5).fields) {
+      expect(f).toEqual(full.get(f.id)); // same value, low flag, and absolute start
+    }
+  });
+
+  it('detects the stop keyword from the full text even when it sits before the window', () => {
+    const withStop = text + ' end exam';
+    const tokenCount = withStop.split(/\s+/).filter(Boolean).length;
+    expect(processTranscript(withStop, cats, tokenCount).stop).toBe(true);
+  });
+
+  it('does not re-report leading speech that was settled out of the window', () => {
+    // tokens: patient(0) resting(1) heart(2) rate(3) 78(4)
+    const r = processTranscript('patient resting heart rate 78', cats, 2);
+    expect(r.unassigned).toEqual([]); // window starts on the anchor → nothing leading
+    expect(r.fields.find((f) => f.id === '1')?.value).toBe('78');
+  });
+});
+
+describe('processTranscriptMulti (alternative hypotheses)', () => {
+  const cats: CompiledCategory[] = [
+    cat('0', ['General Appearance']),
+    cat('1', ['Heart Rate'], { type: 'Number', min: 30, max: 220 }),
+    cat('2', ['Lungs'], {
+      type: 'List',
+      options: [
+        { value: 'Clear', terms: [normalize('Clear')] },
+        { value: 'Wheeze', terms: [normalize('Wheeze')] },
+      ],
+    }),
+  ];
+
+  it('is identical to processTranscript when there are no alternatives', () => {
+    const primary = 'heart rate 78 lungs clear';
+    expect(processTranscriptMulti(primary, [], cats)).toEqual(processTranscript(primary, cats));
+  });
+
+  it('fills a List field the primary missed, using a confident alternative', () => {
+    // Primary mis-hears the option as something matching neither Clear nor
+    // Wheeze, so nothing is captured; the 2nd hypothesis is clean.
+    const primary = 'lungs quiet';
+    expect(processTranscript(primary, cats).fields.find((f) => f.id === '2')).toBeUndefined();
+    const r = processTranscriptMulti(primary, ['lungs wheeze'], cats);
+    expect(r.fields.find((f) => f.id === '2')?.value).toBe('Wheeze');
+  });
+
+  it('upgrades a low/out-of-range Number using a confident alternative', () => {
+    const primary = 'heart rate 3'; // out of range → captured but flagged low
+    expect(processTranscript(primary, cats).fields.find((f) => f.id === '1')).toMatchObject({ value: '3', low: true });
+    const r = processTranscriptMulti(primary, ['heart rate 93'], cats);
+    expect(r.fields.find((f) => f.id === '1')).toMatchObject({ value: '93', low: false });
+  });
+
+  it('never overrides a confident primary capture', () => {
+    const r = processTranscriptMulti('lungs clear', ['lungs wheeze'], cats);
+    expect(r.fields.find((f) => f.id === '2')?.value).toBe('Clear');
+  });
+
+  it('ignores alternatives for Free text fields', () => {
+    const r = processTranscriptMulti('general appearance alert', ['general appearance adort'], cats);
+    expect(r.fields.find((f) => f.id === '0')?.value).toMatch(/alert/i);
+  });
+
+  it('keeps the primary transcript token start when upgrading', () => {
+    // tokens: heart(0) rate(1) 3(2) — anchor at 0 in both primary and alt.
+    const r = processTranscriptMulti('heart rate 3', ['heart rate 93'], cats);
+    expect(r.fields.find((f) => f.id === '1')?.start).toBe(0);
   });
 });

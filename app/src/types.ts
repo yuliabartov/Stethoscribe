@@ -205,4 +205,10 @@ export interface AppState {
   downloading: boolean;
   search: string;
   sort: 'recent' | 'oldest';
+  /** Diagnostic overlay on the exam screen (tap the "RECORDING · time" label to
+   * toggle) — shows the raw recognizer transcript vs. what the match engine
+   * captured, so voice misses can be reported precisely. Off by default. */
+  debug: boolean;
+  /** Latest parse snapshot for the debug overlay; only written while debug is on. */
+  debugInfo: { raw: string; unassigned: string[]; alts: string[] } | null;
 }
