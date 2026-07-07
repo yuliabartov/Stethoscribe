@@ -157,6 +157,15 @@ describe('WebSpeechSource session management', () => {
     src.stop();
   });
 
+  it('honors a tighter zombie budget (standalone home-screen attempts)', () => {
+    const src = new WebSpeechSource('he-IL', { zombieStrikes: 1 });
+    src.start(h.handlers);
+    vi.advanceTimersByTime(21_000); // first strike → immediate loud failure
+    expect(h.errors).toContain('restart-failed');
+    expect(FakeRec.instances).toHaveLength(1); // no quiet recycle first
+    src.stop();
+  });
+
   it('a single zombie recycle recovers quietly when the fresh session works', () => {
     const src = new WebSpeechSource('he-IL');
     src.start(h.handlers);

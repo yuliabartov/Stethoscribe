@@ -574,7 +574,10 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     examUnassignedBaseRef.current = examUnassignedBaseRef.current.concat(examSessionUnassignedRef.current);
     examSessionUnassignedRef.current = [];
     const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
-    const source = new WebSpeechSource(lang);
+    // Standalone (home-screen) attempts get one zombie strike, not two — if
+    // recognition is platform-restricted there, say so in ~20s, not ~40s.
+    const standalone = isIOSStandalone();
+    const source = new WebSpeechSource(lang, standalone ? { zombieStrikes: 1 } : undefined);
     speechRef.current = source;
     source.start({
       onTranscript: (finalText, interim) => {
@@ -625,10 +628,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         if (result.stop) endExam();
       },
       onError: (code) => {
+        // In the home-screen app, a dead/refused session means the platform
+        // restriction is real — point at Safari rather than a generic stall.
+        const mapped = standalone && (code === 'restart-failed' || code === 'service-not-allowed') ? 'standalone' : code;
         // The doctor may be mid-palpation and not looking — a dead mic must
         // be heard/felt, not just shown.
-        if (FATAL_MIC_ERRORS.has(code)) playFailureFeedback();
-        update({ micError: code });
+        if (FATAL_MIC_ERRORS.has(mapped)) playFailureFeedback();
+        update({ micError: mapped });
       },
       onEnd: () => {},
     });
@@ -660,11 +666,12 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     lastCaptureValuesRef.current.clear();
     // Voice exam is phone-only (spec §9). On a phone we do real voice (or show a
     // clear "unsupported browser" message); desktop keeps the simulated demo.
-    // iOS home-screen apps expose the recognizer but it never produces results
-    // — treat as unsupported with a message pointing at Safari (spec §14).
+    // iOS home-screen (standalone) apps get a REAL attempt: recognition has
+    // historically been restricted there (spec §14), but every observation of
+    // that predates the fixed start-outside-the-tap-gesture bug — so try, and
+    // let the born-dead detector fail fast to "open in Safari" guidance.
     const onPhone = isMobileDevice();
-    const standalone = isIOSStandalone();
-    const canVoice = onPhone && isSpeechSupported() && !standalone;
+    const canVoice = onPhone && isSpeechSupported();
     update({
       screen: 'exam',
       exam: { templateName: t.name, templateId: t.id },
@@ -673,7 +680,7 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
       elapsed: 0,
       paused: false,
       editingId: null,
-      micError: onPhone && !canVoice ? (standalone ? 'standalone' : 'unsupported') : null,
+      micError: onPhone && !canVoice ? 'unsupported' : null,
       voiceActive: canVoice,
     });
     // The doctor may not touch the device for minutes — a sleeping screen
@@ -706,10 +713,6 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
   const startDictation = async () => {
     if (state.dictating) return;
     if (!state.review) return;
-    if (isIOSStandalone()) {
-      update({ dictationError: 'standalone' });
-      return;
-    }
     if (!isSpeechSupported()) {
       update({ dictationError: 'unsupported' });
       return;
@@ -749,7 +752,9 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
     // keyed by id. Stable for the whole session (review order never changes).
     const reviewIds = state.review.cats.map((c) => c.id);
     const lang = state.lang === 'he' ? 'he-IL' : 'en-US';
-    const source = new WebSpeechSource(lang);
+    // Same standalone handling as the exam (see startVoice).
+    const standalone = isIOSStandalone();
+    const source = new WebSpeechSource(lang, standalone ? { zombieStrikes: 1 } : undefined);
     dictationRef.current = source;
     source.start({
       onTranscript: (finalText, interim) => {
@@ -814,12 +819,13 @@ export function StethoscribeProvider({ children }: { children: ReactNode }) {
         notifyPartialFields([]);
       },
       onError: (code) => {
+        const mapped = standalone && (code === 'restart-failed' || code === 'service-not-allowed') ? 'standalone' : code;
         dictationRef.current = null;
         notifyPartialFields([]);
         releaseScreenWakeLock();
-        if (FATAL_MIC_ERRORS.has(code)) playFailureFeedback();
+        if (FATAL_MIC_ERRORS.has(mapped)) playFailureFeedback();
         flushDictationUnassigned();
-        update({ dictationError: code, dictating: false });
+        update({ dictationError: mapped, dictating: false });
       },
       onEnd: () => {},
     });

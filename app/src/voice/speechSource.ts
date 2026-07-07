@@ -144,6 +144,13 @@ const STALE_SESSION_MS = 15_000;
 // a user gesture), and endlessly recycling it just hides the failure.
 const MAX_ZOMBIE_RECYCLES = 2;
 
+export interface SpeechSourceOptions {
+  /** Consecutive zombie recycles before giving up (default 2). iOS
+   * home-screen (standalone) attempts pass 1, so if recognition is
+   * platform-restricted there the doctor learns in ~20s, not ~40s. */
+  zombieStrikes?: number;
+}
+
 export class WebSpeechSource {
   private rec: SpeechRec | null = null;
   private finalText = '';
@@ -154,11 +161,13 @@ export class WebSpeechSource {
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private restartAttempts = 0;
   private zombieRecycles = 0;
+  private zombieStrikeLimit: number;
   private sessionStartedAt = 0;
   private lastEventAt = 0;
 
-  constructor(lang: string) {
+  constructor(lang: string, opts?: SpeechSourceOptions) {
     this.lang = lang;
+    this.zombieStrikeLimit = opts?.zombieStrikes ?? MAX_ZOMBIE_RECYCLES;
   }
 
   start(handlers: SpeechHandlers): void {
@@ -179,7 +188,7 @@ export class WebSpeechSource {
         // No events at all for this long = zombie session. Recycle once or
         // twice, then SURFACE the failure — never spin silently forever.
         this.zombieRecycles++;
-        if (this.zombieRecycles >= MAX_ZOMBIE_RECYCLES) {
+        if (this.zombieRecycles >= this.zombieStrikeLimit) {
           this.fail();
           return;
         }
